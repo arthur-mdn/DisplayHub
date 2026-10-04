@@ -16,16 +16,21 @@ const defaultRoutes = require('./routes/defaultRoutes');
 const config = require('./others/config');
 const database = require('./others/database');
 const initDatabase = require('./others/initDatabase');
+const {getAllowedOrigins, getClientOrigins, getAdminOrigins} = require('./others/allowedOrigins');
 
 async function start() {
     await database.connect();
     await initDatabase();
 
+    const allowedOrigins = getAllowedOrigins();
+    const clientOrigins = getClientOrigins();
+    const adminOrigins = getAdminOrigins();
+
     const app = express();
     const server = http.createServer(app);
     const io = new Server(server, {
         cors: {
-            origin: [config.clientUrl, config.adminUrl],
+            origin: allowedOrigins,
             credentials: true
         },
         pingInterval: 10000,
@@ -36,16 +41,12 @@ async function start() {
     app.use(bodyParser.json());
 
     app.use(cors((req, callback) => {
-        const allowedOrigins = [config.clientUrl, config.adminUrl];
-        let corsOptions;
-
-        if (allowedOrigins.includes(req.header('Origin'))) {
-            corsOptions = {origin: true, credentials: true};
+        const origin = req.header('Origin');
+        if (origin && allowedOrigins.includes(origin)) {
+            callback(null, {origin: true, credentials: true});
         } else {
-            corsOptions = {origin: false};
+            callback(null, {origin: false});
         }
-
-        callback(null, corsOptions);
     }));
 
     app.use(cookieParser());
@@ -64,9 +65,9 @@ async function start() {
 
     io.on('connection', (socket) => {
         const origin = socket.handshake.headers.origin;
-        if (origin === config.clientUrl) {
+        if (clientOrigins.includes(origin)) {
             clientSocket(io, socket);
-        } else if (origin === config.adminUrl) {
+        } else if (adminOrigins.includes(origin)) {
             adminSocket(io, socket);
         } else {
             console.log('Unknown origin:', origin);

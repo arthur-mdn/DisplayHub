@@ -254,14 +254,15 @@ async function emitToAllAdmins(message, data) {
 
 async function emitScreenStatusToMembers(screenId, status) {
     try {
-        const screen = await Screen.findById(screenId);
+        const id = screenId?.toString?.() || screenId;
+        const screen = await Screen.findById(id);
         if (!screen) return;
         for (const user of screen.users) {
             const userId = user.user?._id || user.user;
             for (const adminSocketId of getAdminSocketIdsForUser(userId)) {
                 const adminSocket = io.sockets.sockets.get(adminSocketId);
                 if (adminSocket) {
-                    adminSocket.emit('screen_status', {screenId, status});
+                    adminSocket.emit('screen_status', {screenId: id, status});
                 }
             }
         }

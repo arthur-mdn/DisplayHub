@@ -168,10 +168,27 @@ function App() {
             }
         });
 
-        socket.on('error', (error) => {
-            console.error('Socket error:', error);
+        const resetToPairing = async (reason) => {
+            console.warn('Device auth required:', reason);
+            localStorage.removeItem('screenConfig');
+            savedConfig = null;
+            currentScreenId = null;
+            currentDeviceToken = null;
+            clearWeatherInterval();
+            setConfigData(null);
+            setStatus('requesting_code');
+            socket.emit('request_code');
+            await deleteDatabases();
+        };
+
+        socket.on('device_auth_required', async (payload) => {
+            await resetToPairing(payload?.reason || 'unknown');
+        });
+
+        socket.on('client_error', (error) => {
+            console.error('Socket client_error:', error);
             setStatus('error');
-            setError(error);
+            setError(typeof error === 'string' ? error : (error?.message || 'Erreur'));
             socket.emit('askDebug', savedConfig);
             if (savedConfig) {
                 setConfigData(JSON.parse(savedConfig));

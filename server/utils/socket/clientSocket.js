@@ -60,11 +60,11 @@ module.exports = (io, socket) => {
         const {screenId, deviceToken} = data || {};
         const screen = await assertDeviceAccess(screenId, deviceToken);
         if (!screen) {
-            socket.emit('error', 'Identité appareil invalide');
+            socket.emit('device_auth_required', {reason: 'invalid_device_identity'});
             return;
         }
-        await socketUtils.associateScreenSocket(screen._id, socket.id);
-        await markScreenOnline(screen._id);
+        await socketUtils.associateScreenSocket(screen._id.toString(), socket.id);
+        await markScreenOnline(screen._id.toString());
         await socketUtils.emitSocketListToAllAdmins();
     }));
 
@@ -83,18 +83,19 @@ module.exports = (io, socket) => {
         const {screenId, deviceToken} = data || {};
         const screen = await assertDeviceAccess(screenId, deviceToken);
         if (!screen) {
-            socket.emit('error', 'Identité appareil invalide');
+            socket.emit('device_auth_required', {reason: 'invalid_device_identity'});
             return;
         }
-        const withMeteo = await Screen.findById(screen._id).populate('meteo');
+        const screenIdStr = screen._id.toString();
+        const withMeteo = await Screen.findById(screenIdStr).populate('meteo');
         const weatherId = withMeteo?.meteo?.weatherId;
         if (!weatherId) {
             return;
         }
-        await updateWeatherData(screen._id, weatherId);
-        await socketUtils.associateScreenSocket(screen._id, socket.id);
-        await markScreenOnline(screen._id);
-        const populated = await Screen.findById(screen._id)
+        await updateWeatherData(screenIdStr, weatherId);
+        await socketUtils.associateScreenSocket(screenIdStr, socket.id);
+        await markScreenOnline(screenIdStr);
+        const populated = await Screen.findById(screenIdStr)
             .populate('users.user', 'email firstName lastName')
             .populate('logo')
             .populate('featured_image')
@@ -107,14 +108,23 @@ module.exports = (io, socket) => {
 
     socket.on('update_config', safeHandler(async (data) => {
         const {screenId, deviceToken} = data || {};
+        const id = typeof screenId === 'string' ? screenId : screenId?.toString?.();
+        if (id && mongoose.Types.ObjectId.isValid(id)) {
+            const existing = await Screen.findById(id).select('+deviceTokenHash');
+            if (existing && !existing.deviceTokenHash) {
+                socket.emit('device_auth_required', {reason: 'device_token_missing'});
+                return;
+            }
+        }
         const screen = await assertDeviceAccess(screenId, deviceToken);
         if (!screen) {
-            socket.emit('error', 'Identité appareil invalide');
+            socket.emit('device_auth_required', {reason: 'invalid_device_identity'});
             return;
         }
-        await socketUtils.associateScreenSocket(screen._id, socket.id);
-        await markScreenOnline(screen._id);
-        const populated = await Screen.findById(screen._id)
+        const screenIdStr = screen._id.toString();
+        await socketUtils.associateScreenSocket(screenIdStr, socket.id);
+        await markScreenOnline(screenIdStr);
+        const populated = await Screen.findById(screenIdStr)
             .populate('users.user', 'email firstName lastName')
             .populate('logo')
             .populate('featured_image')

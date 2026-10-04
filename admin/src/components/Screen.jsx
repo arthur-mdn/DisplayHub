@@ -66,13 +66,9 @@ function Screen() {
         if (socket) {
             console.log("Socket is connected");
             socket.on('screen_status', (updatedScreen) => {
-                if (updatedScreen.screenId === screenId) {
+                if (String(updatedScreen.screenId) === String(screenId)) {
                     setScreen((prevScreen) => ({...prevScreen, status: updatedScreen.status}));
                 }
-            });
-
-            socket.on('disconnect', () => {
-                setScreen((prevScreen) => ({...prevScreen, status: "offline"}));
             });
 
             return () => {
