@@ -28,12 +28,18 @@ async function ensureScreenMember(req, res, next) {
     }
 }
 
+function toIdString(value) {
+    if (value == null) return '';
+    const id = value._id ?? value;
+    return id?.toString?.() || String(id);
+}
+
 function assertOwnedIdList(currentIds, newOrder) {
     if (!Array.isArray(newOrder)) {
         return {ok: false, error: 'newOrder doit être un tableau'};
     }
-    const current = currentIds.map((id) => id.toString());
-    const next = newOrder.map((id) => id?.toString?.() || String(id));
+    const current = currentIds.map(toIdString);
+    const next = newOrder.map(toIdString);
     if (next.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
         return {ok: false, error: 'Identifiant invalide dans newOrder'};
     }
@@ -53,17 +59,28 @@ function assertOwnedIdList(currentIds, newOrder) {
     return {ok: true, ids: next};
 }
 
+function asyncHandler(fn) {
+    return (req, res, next) => {
+        Promise.resolve(fn(req, res, next)).catch((error) => {
+            console.error(error);
+            if (!res.headersSent) {
+                res.status(500).send({error: 'Erreur serveur'});
+            }
+        });
+    };
+}
 
-router.get('/screens', verifyToken, async (req, res) => {
+
+router.get('/screens', verifyToken, asyncHandler(async (req, res) => {
     const screens = await Screen.find({"users.user": req.user.userId});
     if (screens) {
         res.send({success: true, screens});
     } else {
         res.status(404).send({error: 'Aucun écran trouvé'});
     }
-});
+}));
 
-router.get('/screens/:id', verifyToken, async (req, res) => {
+router.get('/screens/:id', verifyToken, asyncHandler(async (req, res) => {
     const {id} = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).send({error: 'ID invalide'});
@@ -79,7 +96,7 @@ router.get('/screens/:id', verifyToken, async (req, res) => {
         console.error('Erreur lors de la récupération de l\'écran:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 const hasPermission = async (userId, screenId, attribute) => {
     const screen = await Screen.findById(screenId).populate('users.user');
@@ -95,7 +112,7 @@ const hasPermission = async (userId, screenId, attribute) => {
 router.post('/screens/update', verifyToken, ensureScreenMember, upload.fields([
     {name: 'logo', maxCount: 1},
     {name: 'featured_image', maxCount: 1}
-]), async (req, res) => {
+]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const userId = req.user.userId;
     try {
@@ -197,10 +214,10 @@ router.post('/screens/update', verifyToken, ensureScreenMember, upload.fields([
         console.error('Erreur lors de la mise à jour :', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-router.delete('/screens/', verifyToken, async (req, res) => {
+router.delete('/screens/', verifyToken, asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
 
     try {
@@ -224,10 +241,10 @@ router.delete('/screens/', verifyToken, async (req, res) => {
         console.error('Erreur lors de la suppression de l\'écran:', error);
         res.status(500).send({error: 'Erreur serveur lors de la suppression de l\'écran'});
     }
-});
+}));
 
 
-router.post('/screens/icons', verifyToken, checkUserPermissions(['icons']), upload.array('icon', 10), async (req, res) => {
+router.post('/screens/icons', verifyToken, checkUserPermissions(['icons']), upload.array('icon', 10), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
 
     const screen = await Screen.findOne({_id: screenId, 'users.user': req.user.userId});
@@ -266,9 +283,9 @@ router.post('/screens/icons', verifyToken, checkUserPermissions(['icons']), uplo
     } else {
         res.status(400).send({error: 'Aucun fichier fourni'});
     }
-});
+}));
 
-router.post('/screens/icons/addDefault', verifyToken, checkUserPermissions(["icons"]), async (req, res) => {
+router.post('/screens/icons/addDefault', verifyToken, checkUserPermissions(["icons"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen
     const {iconId} = req.body;
 
@@ -294,9 +311,9 @@ router.post('/screens/icons/addDefault', verifyToken, checkUserPermissions(["ico
         console.error('Erreur lors de l\'ajout de l\'icône par défaut:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
-router.delete('/screens/icons', verifyToken, checkUserPermissions(["icons"]), async (req, res) => {
+router.delete('/screens/icons', verifyToken, checkUserPermissions(["icons"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
 
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
@@ -321,10 +338,10 @@ router.delete('/screens/icons', verifyToken, checkUserPermissions(["icons"]), as
         console.error('Erreur lors de la suppression de l\'icone:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-router.post('/screens/icons/reorder', verifyToken, checkUserPermissions(["icons"]), async (req, res) => {
+router.post('/screens/icons/reorder', verifyToken, checkUserPermissions(["icons"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen
     const {newOrder} = req.body;
 
@@ -348,10 +365,10 @@ router.post('/screens/icons/reorder', verifyToken, checkUserPermissions(["icons"
         console.error('Erreur lors de la réorganisation des icônes:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-router.post('/screens/directions', verifyToken, checkUserPermissions(["directions"]), async (req, res) => {
+router.post('/screens/directions', verifyToken, checkUserPermissions(["directions"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
@@ -369,9 +386,9 @@ router.post('/screens/directions', verifyToken, checkUserPermissions(["direction
         console.error('Erreur lors de l\'ajout d\'une direction:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
-router.delete('/screens/directions/:directionId', verifyToken, checkUserPermissions(["directions"]), async (req, res) => {
+router.delete('/screens/directions/:directionId', verifyToken, checkUserPermissions(["directions"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
@@ -389,9 +406,9 @@ router.delete('/screens/directions/:directionId', verifyToken, checkUserPermissi
         console.error('Erreur lors de la suppression d\'une direction:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
-router.put('/screens/directions/:directionId', verifyToken, checkUserPermissions(["directions"]), async (req, res) => {
+router.put('/screens/directions/:directionId', verifyToken, checkUserPermissions(["directions"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
@@ -414,9 +431,9 @@ router.put('/screens/directions/:directionId', verifyToken, checkUserPermissions
         console.error('Erreur lors de la mise à jour d\'une direction:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
-router.post('/screens/directions/reorder', verifyToken, checkUserPermissions(["directions"]), async (req, res) => {
+router.post('/screens/directions/reorder', verifyToken, checkUserPermissions(["directions"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
@@ -446,9 +463,9 @@ router.post('/screens/directions/reorder', verifyToken, checkUserPermissions(["d
         console.error('Erreur lors de la réorganisation des directions:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
-router.post('/screens/photos', verifyToken, checkUserPermissions(["photos"]), upload.array('photos', 10), async (req, res) => {
+router.post('/screens/photos', verifyToken, checkUserPermissions(["photos"]), upload.array('photos', 10), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
@@ -485,9 +502,9 @@ router.post('/screens/photos', verifyToken, checkUserPermissions(["photos"]), up
     } else {
         res.status(400).send({error: 'Aucun fichier fourni'});
     }
-});
+}));
 
-router.delete('/screens/photos', verifyToken, checkUserPermissions(["photos"]), async (req, res) => {
+router.delete('/screens/photos', verifyToken, checkUserPermissions(["photos"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const {photoId} = req.body;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
@@ -511,10 +528,10 @@ router.delete('/screens/photos', verifyToken, checkUserPermissions(["photos"]), 
         console.error('Erreur lors de la suppression de la photo:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-router.post('/screens/photos/reorder', verifyToken, checkUserPermissions(["photos"]), async (req, res) => {
+router.post('/screens/photos/reorder', verifyToken, checkUserPermissions(["photos"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const {newOrder} = req.body;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
@@ -537,10 +554,10 @@ router.post('/screens/photos/reorder', verifyToken, checkUserPermissions(["photo
         console.error('Erreur lors de la réorganisation des photos:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-router.post('/screens/updateConfig', verifyToken, checkUserPermissions(["avanced_settings"]), async (req, res) => {
+router.post('/screens/updateConfig', verifyToken, checkUserPermissions(["avanced_settings"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const configUpdates = req.body;
     let screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
@@ -564,10 +581,10 @@ router.post('/screens/updateConfig', verifyToken, checkUserPermissions(["avanced
         console.error('Erreur lors de la mise à jour de la configuration :', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-router.post('/screens/users', verifyToken, checkUserPermissions(["allowed_users"]), async (req, res) => {
+router.post('/screens/users', verifyToken, checkUserPermissions(["allowed_users"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const {userEmail, role, permissions} = req.body;
 
@@ -593,10 +610,10 @@ router.post('/screens/users', verifyToken, checkUserPermissions(["allowed_users"
     await screen.save();
 
     res.send({success: true, message: 'Utilisateur ajouté avec succès'});
-});
+}));
 
 
-router.put('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed_users"]), async (req, res) => {
+router.put('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed_users"]), asyncHandler(async (req, res) => {
     const {userId} = req.params;
     const screenId = req.selectedScreen;
     const {permissions, role} = req.body;
@@ -623,9 +640,9 @@ router.put('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed
     await screen.save();
 
     res.send({success: true, message: 'Permissions modifiées avec succès'});
-});
+}));
 
-router.delete('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed_users"]), async (req, res) => {
+router.delete('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed_users"]), asyncHandler(async (req, res) => {
     const {userId} = req.params;
     const screenId = req.selectedScreen;
 
@@ -644,7 +661,7 @@ router.delete('/screens/users/:userId', verifyToken, checkUserPermissions(["allo
     await screen.save();
 
     res.send({success: true, message: 'Utilisateur supprimé avec succès'});
-});
+}));
 
 
 module.exports = router;

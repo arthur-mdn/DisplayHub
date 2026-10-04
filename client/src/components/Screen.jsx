@@ -4,7 +4,7 @@ import TimeViewer from "./TimeViewer";
 import DirectionsViewer from "./DirectionsViewer";
 import PhotoSlider from "./PhotoSlider.jsx";
 import DisplayLogo from "./DisplayLogo.jsx";
-import {Helmet} from "react-helmet";
+import {Helmet} from "react-helmet-async";
 import DisplayIcons from "./DisplayIcons.jsx";
 
 function Screen({configData, isDarkModeActive}) {

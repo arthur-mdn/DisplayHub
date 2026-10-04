@@ -3,7 +3,7 @@ import {useSocket} from "../../../SocketContext.jsx";
 import {useParams} from "react-router-dom";
 import DisplayImage from "../../DisplayImage.jsx";
 import {FaArrowRotateLeft, FaPen, FaTrash} from "react-icons/fa6";
-import QRCode from "qrcode.react";
+import {QRCodeSVG} from "qrcode.react";
 import config from "../../../config";
 import Control from "../../Settings/Control.jsx";
 
@@ -54,10 +54,9 @@ function SocketDetail() {
     const renderQRCode = () => (
         <div className="screen without-arrow">
             <div className="img-container">
-                <QRCode
+                <QRCodeSVG
                     value={`${config.adminUrl}/screens/add/${socketDetails.associationCode}`}
                     size={100}
-                    renderAs="svg"
                 />
             </div>
             <div className="fc ai-fs g0-5 h100">

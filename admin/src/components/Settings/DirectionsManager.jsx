@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import axios from 'axios';
 import config from '../../config';
-import {DragDropContext, Draggable, Droppable} from 'react-beautiful-dnd';
+import {DragDropContext, Draggable, Droppable} from '@hello-pangea/dnd';
 import {FaPencil, FaTrash} from "react-icons/fa6";
 import Modal from "../Modal.jsx";
 import AddDirection from "./AddDirection.jsx";

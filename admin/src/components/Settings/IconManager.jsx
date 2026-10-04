@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
 import axios from 'axios';
 import config from '../../config';
-import {DragDropContext, Draggable, Droppable} from 'react-beautiful-dnd';
+import {DragDropContext, Draggable, Droppable} from '@hello-pangea/dnd';
 import {useDropzone} from 'react-dropzone';
 import Loading from "../Loading.jsx";
 import {toast} from "react-toastify";

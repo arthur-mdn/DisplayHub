@@ -1,4 +1,4 @@
-const uuid = require('uuid');
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const Screen = require('../../models/Screen');
 const socketUtils = require('./socketUtils');
@@ -70,7 +70,7 @@ module.exports = (io, socket) => {
 
     socket.on('request_code', safeHandler(async () => {
         const [previousScreenId] = socketUtils.getScreenId(socket.id);
-        const uniqueCode = uuid.v4();
+        const uniqueCode = crypto.randomUUID();
         await socketUtils.associateSocketWaitingForConfiguration(socket.id, uniqueCode);
         if (previousScreenId) {
             await markScreenOfflineIfUnused(previousScreenId, socket.id);

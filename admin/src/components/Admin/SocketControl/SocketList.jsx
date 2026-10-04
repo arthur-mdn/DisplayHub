@@ -2,7 +2,7 @@ import React, {useEffect, useState} from "react";
 import {useSocket} from "../../../SocketContext.jsx";
 import {Link} from "react-router-dom";
 import DisplayImage from "../../DisplayImage.jsx";
-import QRCode from "qrcode.react";
+import {QRCodeSVG} from "qrcode.react";
 import config from "../../../config";
 
 function SocketList() {
@@ -24,7 +24,7 @@ function SocketList() {
         <Link to={`/admin/socketControl/${socketElement.socketId}`} key={type === "association" ? socketElement.socketId : socketElement[type]._id} className="screen">
             <div className="img-container">
                 {type === "association" ? (
-                    <QRCode value={`${config.adminUrl}/screens/add/${socketElement.associationCode}`} size={100} renderAs="svg" />
+                    <QRCodeSVG value={`${config.adminUrl}/screens/add/${socketElement.associationCode}`} size={100} />
                 ) : (
                     <DisplayImage image={imageSrc} />
                 )}
