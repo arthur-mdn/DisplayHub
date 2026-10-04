@@ -13,6 +13,7 @@ const {updateWeatherData} = require('../utils/weatherUtils');
 const mongoose = require('mongoose');
 const {processScreenObj} = require('../others/sanitizeScreen');
 const {upload, removeUploadedFiles, validateUploadedFiles} = require('../others/uploadUtils');
+const {normalizeAssignableRole, sanitizeAssignablePermissions} = require('../others/screenRoles');
 
 async function ensureScreenMember(req, res, next) {
     try {
@@ -500,7 +501,6 @@ router.post('/screens/updateConfig', verifyToken, checkUserPermissions(["avanced
 });
 
 
-// Ajouter un utilisateur à un écran
 router.post('/screens/users', verifyToken, checkUserPermissions(["allowed_users"]), async (req, res) => {
     const screenId = req.selectedScreen;
     const {userEmail, role, permissions} = req.body;
@@ -511,22 +511,29 @@ router.post('/screens/users', verifyToken, checkUserPermissions(["allowed_users"
     const user = await User.findOne({email: userEmail});
     if (!user) return res.status(404).send({error: 'Utilisateur non trouvé'});
 
-    // Vérifier si l'utilisateur est déjà ajouté
     const isUserAdded = screen.users.some(u => u.user.toString() === user._id.toString());
     if (isUserAdded) return res.status(400).send({error: 'Utilisateur déjà ajouté'});
 
-    screen.users.push({user: user._id, role, permissions});
+    const safeRole = normalizeAssignableRole(role);
+    if (!safeRole) {
+        return res.status(400).send({error: 'Rôle non autorisé'});
+    }
+
+    screen.users.push({
+        user: user._id,
+        role: safeRole,
+        permissions: sanitizeAssignablePermissions(permissions)
+    });
     await screen.save();
 
     res.send({success: true, message: 'Utilisateur ajouté avec succès'});
 });
 
 
-// Modifier les permissions d'un utilisateur sur un écran
 router.put('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed_users"]), async (req, res) => {
     const {userId} = req.params;
     const screenId = req.selectedScreen;
-    const {permissions} = req.body;
+    const {permissions, role} = req.body;
 
     const screen = await Screen.findById(screenId);
     if (!screen) return res.status(404).send({error: 'Écran non trouvé'});
@@ -534,7 +541,19 @@ router.put('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed
     const userIndex = screen.users.findIndex(u => u.user.toString() === userId);
     if (userIndex === -1) return res.status(404).send({error: 'Utilisateur non trouvé sur cet écran'});
 
-    screen.users[userIndex].permissions = permissions;
+    if (screen.users[userIndex].role === 'creator') {
+        return res.status(403).send({error: 'Impossible de modifier le créateur de l\'écran'});
+    }
+
+    if (role !== undefined) {
+        const safeRole = normalizeAssignableRole(role);
+        if (!safeRole) {
+            return res.status(400).send({error: 'Rôle non autorisé'});
+        }
+        screen.users[userIndex].role = safeRole;
+    }
+
+    screen.users[userIndex].permissions = sanitizeAssignablePermissions(permissions);
     await screen.save();
 
     res.send({success: true, message: 'Permissions modifiées avec succès'});

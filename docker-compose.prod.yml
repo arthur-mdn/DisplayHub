@@ -61,7 +61,6 @@ services:
         VITE_ADMIN_URL: ${VITE_ADMIN_URL}
         VITE_COOKIE_DOMAIN: ${VITE_COOKIE_DOMAIN}
         VITE_PI_SERVER_URL: ${VITE_PI_SERVER_URL:-http://127.0.0.1:3002}
-        VITE_PI_API_TOKEN: ${VITE_PI_API_TOKEN}
     image: displayhub-client
     restart: always
     labels:

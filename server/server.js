@@ -54,7 +54,12 @@ async function start() {
     app.use(screenRoutes);
     app.use(apiRoutes);
     app.use(defaultRoutes);
-    app.use('/uploads', express.static('uploads'));
+    app.use('/uploads', express.static('uploads', {
+        setHeaders(res) {
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        }
+    }));
     app.use('/public', express.static('public'));
 
     io.on('connection', (socket) => {

@@ -5,7 +5,7 @@ const {execFile} = require('child_process');
 const config = require('./others/config');
 
 const app = express();
-const appVersion = 'pi-0.0.42';
+const appVersion = 'pi-0.0.43';
 
 app.use(cors({
     origin: config.clientUrl,
@@ -15,7 +15,15 @@ app.use(cors({
 
 app.use(express.json());
 
-function requireApiToken(req, res, next) {
+function isLocalRequest(req) {
+    const remote = req.socket.remoteAddress || '';
+    return remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
+}
+
+function requireLocalOrApiToken(req, res, next) {
+    if (isLocalRequest(req)) {
+        return next();
+    }
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
     if (!token || token !== config.apiToken) {
@@ -36,7 +44,7 @@ const executeFile = (file, args = []) => {
     });
 };
 
-app.get('/', requireApiToken, async (req, res) => {
+app.get('/', requireLocalOrApiToken, async (req, res) => {
     let availableCommands = ['shutdown', 'reboot', 'update'];
     let defaultValues = {};
 
@@ -57,7 +65,7 @@ app.get('/', requireApiToken, async (req, res) => {
     }
 });
 
-app.post('/execute', requireApiToken, async (req, res) => {
+app.post('/execute', requireLocalOrApiToken, async (req, res) => {
     const command = req.body.command;
     const value = req.body.value;
 

@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     command: ["mongod", "--config", "/etc/mongo/mongod.conf"]
     ports:
-      - "127.0.0.1:27018:27017"
+      - "127.0.0.1:${MONGODB_HOST_PORT:-27019}:27017"
     volumes:
       - DisplayHub_mongodb_data:/data/db
       - ./mongo/mongod.conf:/etc/mongo/mongod.conf:ro

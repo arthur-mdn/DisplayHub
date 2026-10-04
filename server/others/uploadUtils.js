@@ -3,14 +3,13 @@ const path = require('path');
 const multer = require('multer');
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']);
+const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 
 const IMAGE_SIGNATURES = [
     {exts: ['.jpg', '.jpeg'], bytes: [0xFF, 0xD8, 0xFF]},
     {exts: ['.png'], bytes: [0x89, 0x50, 0x4E, 0x47]},
     {exts: ['.gif'], bytes: [0x47, 0x49, 0x46]},
-    {exts: ['.webp'], bytes: [0x52, 0x49, 0x46, 0x46], offsetCheck: (buf) => buf.slice(8, 12).toString() === 'WEBP'},
-    {exts: ['.svg'], text: true}
+    {exts: ['.webp'], bytes: [0x52, 0x49, 0x46, 0x46], offsetCheck: (buf) => buf.slice(8, 12).toString() === 'WEBP'}
 ];
 
 function removeUploadedFiles(files) {
@@ -32,10 +31,13 @@ function removeUploadedFiles(files) {
 
 function imageFilter(req, file, cb) {
     const ext = path.extname(file.originalname || '').toLowerCase();
+    if (ext === '.svg' || file.mimetype === 'image/svg+xml') {
+        return cb(new Error('Les fichiers SVG ne sont pas autorisés'), false);
+    }
     if (!ALLOWED_EXTENSIONS.has(ext)) {
         return cb(new Error('Extension de fichier non autorisée'), false);
     }
-    if (!file.mimetype.startsWith('image/') && file.mimetype !== 'image/svg+xml') {
+    if (!file.mimetype.startsWith('image/')) {
         return cb(new Error('Seuls les fichiers image sont autorisés'), false);
     }
     cb(null, true);
@@ -60,14 +62,13 @@ const upload = multer({
 
 function validateImageMagic(filePath) {
     const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.svg') {
+        return false;
+    }
     const fd = fs.openSync(filePath, 'r');
     try {
         const buf = Buffer.alloc(16);
         fs.readSync(fd, buf, 0, 16, 0);
-        if (ext === '.svg') {
-            const head = buf.toString('utf8').trim().toLowerCase();
-            return head.startsWith('<svg') || head.startsWith('<?xml');
-        }
         const signature = IMAGE_SIGNATURES.find((s) => s.exts.includes(ext));
         if (!signature) return false;
         for (let i = 0; i < signature.bytes.length; i++) {

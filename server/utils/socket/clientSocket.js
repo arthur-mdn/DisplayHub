@@ -19,6 +19,20 @@ async function assertDeviceAccess(screenId, deviceToken) {
     return screen;
 }
 
+async function markScreenOnline(screenId) {
+    await Screen.findByIdAndUpdate(screenId, {status: 'online'});
+    await socketUtils.emitScreenStatusToMembers(screenId, 'online');
+}
+
+async function markScreenOfflineIfUnused(screenId, exceptSocketId = null) {
+    if (!screenId) return;
+    if (socketUtils.hasOtherSocketForScreen(screenId, exceptSocketId)) {
+        return;
+    }
+    await Screen.findByIdAndUpdate(screenId, {status: 'offline'});
+    await socketUtils.emitScreenStatusToMembers(screenId, 'offline');
+}
+
 module.exports = (io, socket) => {
     console.log('Raspberry Pi connected:', socket.id);
 
@@ -29,21 +43,18 @@ module.exports = (io, socket) => {
             socket.emit('error', 'Identité appareil invalide');
             return;
         }
-        await Screen.findByIdAndUpdate(screenId, {status: 'online'});
         await socketUtils.associateScreenSocket(screenId, socket.id);
+        await markScreenOnline(screenId);
+        await socketUtils.emitSocketListToAllAdmins();
     });
 
     socket.on('request_code', async () => {
-        const [screenId] = socketUtils.getScreenId(socket.id);
-        try {
-            if (screenId) {
-                await Screen.findByIdAndUpdate(screenId, {status: 'offline'});
-            }
-        } catch (error) {
-            console.error('Erreur lors de la mise à jour de l\'écran:', error);
-        }
+        const [previousScreenId] = socketUtils.getScreenId(socket.id);
         const uniqueCode = uuid.v4();
         await socketUtils.associateSocketWaitingForConfiguration(socket.id, uniqueCode);
+        if (previousScreenId) {
+            await markScreenOfflineIfUnused(previousScreenId, socket.id);
+        }
         socket.emit('receive_code', uniqueCode);
         await socketUtils.emitSocketListToAllAdmins();
     });
@@ -61,8 +72,9 @@ module.exports = (io, socket) => {
             if (!weatherId) {
                 return;
             }
-            const updatedScreen = await updateWeatherData(screenId, weatherId);
-            await Screen.findByIdAndUpdate(screenId, {status: 'online'});
+            await updateWeatherData(screenId, weatherId);
+            await socketUtils.associateScreenSocket(screenId, socket.id);
+            await markScreenOnline(screenId);
             const populated = await Screen.findById(screenId)
                 .populate('users.user', 'email firstName lastName')
                 .populate('logo')
@@ -71,7 +83,7 @@ module.exports = (io, socket) => {
                 .populate('photos')
                 .populate('meteo')
                 .select('-deviceTokenHash');
-            socket.emit('config_updated', sanitizeScreen(populated || updatedScreen));
+            socket.emit('config_updated', sanitizeScreen(populated));
         } catch (error) {
             console.error('Erreur lors de la mise à jour de la météo:', error);
         }
@@ -86,7 +98,7 @@ module.exports = (io, socket) => {
                 return;
             }
             await socketUtils.associateScreenSocket(screenId, socket.id);
-            await Screen.findByIdAndUpdate(screenId, {status: 'online'});
+            await markScreenOnline(screenId);
             const populated = await Screen.findById(screenId)
                 .populate('users.user', 'email firstName lastName')
                 .populate('logo')
@@ -96,16 +108,6 @@ module.exports = (io, socket) => {
                 .populate('meteo')
                 .select('-deviceTokenHash');
             socket.emit('config_updated', sanitizeScreen(populated || screen));
-            for (const user of screen.users) {
-                const userId = user.user?._id || user.user;
-                const adminSocketId = socketUtils.getAdminSocketId(userId);
-                if (adminSocketId) {
-                    const adminSocket = io.sockets.sockets.get(adminSocketId);
-                    if (adminSocket) {
-                        adminSocket.emit('screen_status', {screenId, status: 'online'});
-                    }
-                }
-            }
         } catch (error) {
             console.error('Erreur lors de la récupération de la configuration:', error);
             socket.emit('error', 'Erreur lors de la récupération de la configuration');
@@ -120,8 +122,7 @@ module.exports = (io, socket) => {
         if (!screen) return;
         for (const user of screen.users) {
             const userId = user.user?._id || user.user;
-            const adminSocketId = socketUtils.getAdminSocketId(userId);
-            if (adminSocketId) {
+            for (const adminSocketId of socketUtils.getAdminSocketIdsForUser(userId)) {
                 const adminSocket = io.sockets.sockets.get(adminSocketId);
                 if (adminSocket) {
                     adminSocket.emit('server_forward_client_response_to_admin', data);
@@ -133,10 +134,13 @@ module.exports = (io, socket) => {
     socket.on('askDebug', async (screenPayload) => {
         try {
             const parsed = typeof screenPayload === 'string' ? JSON.parse(screenPayload) : screenPayload;
-            if (!parsed || !parsed._id) {
+            if (!parsed || typeof parsed !== 'object') {
                 return;
             }
-            await socketUtils.associateSocketDebug(socket.id, {_id: parsed._id, name: parsed.name || 'debug'});
+            await socketUtils.associateSocketDebug(socket.id, {
+                _id: parsed._id || null,
+                name: parsed.name || 'debug'
+            });
             await socketUtils.emitSocketListToAllAdmins();
         } catch (error) {
             console.error('askDebug invalid payload');
@@ -147,21 +151,8 @@ module.exports = (io, socket) => {
         try {
             const screenId = socketUtils.removeSocketId(socket.id);
             if (screenId) {
-                await Screen.findByIdAndUpdate(screenId, {status: 'offline'});
                 console.log('Screen disconnected:', screenId);
-                const screen = await Screen.findById(screenId);
-                if (screen) {
-                    for (const user of screen.users) {
-                        const userId = user.user?._id || user.user;
-                        const adminSocketId = socketUtils.getAdminSocketId(userId);
-                        if (adminSocketId) {
-                            const adminSocket = io.sockets.sockets.get(adminSocketId);
-                            if (adminSocket) {
-                                adminSocket.emit('screen_status', {screenId, status: 'offline'});
-                            }
-                        }
-                    }
-                }
+                await markScreenOfflineIfUnused(screenId);
             }
         } catch (error) {
             console.error('ecran non trouvé', error);
@@ -172,7 +163,7 @@ module.exports = (io, socket) => {
     socket.conn.on('pingTimeout', async () => {
         const screenId = socketUtils.removeSocketId(socket.id);
         if (screenId) {
-            await Screen.findByIdAndUpdate(screenId, {status: 'offline'});
+            await markScreenOfflineIfUnused(screenId);
         }
         await socketUtils.emitSocketListToAllAdmins();
     });

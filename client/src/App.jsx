@@ -63,15 +63,18 @@ function App() {
             }, 3600000);
         };
 
-        const piHeaders = () => ({
-            'Content-Type': 'application/json',
-            ...(config.piApiToken ? {Authorization: `Bearer ${config.piApiToken}`} : {})
-        });
-
-        const piFetch = (path, options = {}) => fetch(`${config.piServerUrl}${path}`, {
-            ...options,
-            headers: {...piHeaders(), ...(options.headers || {})}
-        });
+        const piFetch = (path, options = {}) => {
+            const localToken = localStorage.getItem('piApiToken');
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(options.headers || {}),
+                ...(localToken ? {Authorization: `Bearer ${localToken}`} : {})
+            };
+            return fetch(`${config.piServerUrl}${path}`, {
+                ...options,
+                headers
+            });
+        };
 
         socket.on('connect', () => {
             setSocketId(socket.id);
@@ -175,9 +178,16 @@ function App() {
             }
         });
 
-        socket.on('adminChangeScreenId', () => {
-            localStorage.removeItem('screenConfig');
-            window.location.reload();
+        socket.on('adminChangeScreenId', (data) => {
+            if (data && data._id && data.deviceToken) {
+                localStorage.setItem('screenConfig', JSON.stringify({
+                    _id: data._id,
+                    deviceToken: data.deviceToken
+                }));
+                window.location.reload();
+                return;
+            }
+            console.error('adminChangeScreenId payload invalide');
         });
 
         socket.on('refresh', () => {

@@ -4,8 +4,7 @@ const config = {
     adminUrl: import.meta.env.VITE_SCHEME + '://' + import.meta.env.VITE_ADMIN_URL,
     cookieDomain: import.meta.env.VITE_COOKIE_DOMAIN,
     clientPort: import.meta.env.VITE_CLIENT_PORT,
-    piServerUrl: import.meta.env.VITE_PI_SERVER_URL || 'http://127.0.0.1:3002',
-    piApiToken: import.meta.env.VITE_PI_API_TOKEN || ''
+    piServerUrl: import.meta.env.VITE_PI_SERVER_URL || 'http://127.0.0.1:3002'
 };
 
 export default config;

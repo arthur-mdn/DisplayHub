@@ -122,6 +122,8 @@ router.post('/auth/logout', async (req, res) => {
         try {
             const decoded = jwt.verify(token, config.secretKey);
             await User.findByIdAndUpdate(decoded.userId, {$inc: {tokenVersion: 1}});
+            const socketUtils = require('../utils/socket/socketUtils');
+            socketUtils.disconnectAdminSocketsForUser(decoded.userId);
         } catch (error) {
             // ignore invalid token on logout
         }
