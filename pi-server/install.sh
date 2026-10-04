@@ -110,9 +110,23 @@ sudo chown -R $USERNAME:$USERNAME $APP_DIR
 
 sudo -u $USERNAME npm install
 
-sudo -u $USERNAME cp .env.example .env
 NEW_CLIENT_URL="https://client.displayhub.fr"
-sed -i "s|^CLIENT_URL=.*|CLIENT_URL=${NEW_CLIENT_URL}|"  .env
+PI_API_TOKEN="$(openssl rand -hex 32)"
+if [ -f .env.example ]; then
+  sudo -u $USERNAME cp .env.example .env
+else
+  sudo -u $USERNAME tee .env > /dev/null <<EOF
+CLIENT_URL=
+PORT=3002
+PI_API_TOKEN=
+EOF
+fi
+sed -i "s|^CLIENT_URL=.*|CLIENT_URL=${NEW_CLIENT_URL}|" .env
+sed -i "s|^PI_API_TOKEN=.*|PI_API_TOKEN=${PI_API_TOKEN}|" .env
+if ! grep -q '^PI_API_TOKEN=' .env; then
+  echo "PI_API_TOKEN=${PI_API_TOKEN}" >> .env
+fi
+chown $USERNAME:$USERNAME .env
 
 echo "Configuration du fichier sudoers pour $USERNAME..."
 
@@ -136,6 +150,8 @@ User=$USERNAME
 Environment=PATH=/usr/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=NODE_ENV=production
 Environment=PORT=3002
+Environment=PI_API_TOKEN=${PI_API_TOKEN}
+Environment=CLIENT_URL=${NEW_CLIENT_URL}
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=pi-server

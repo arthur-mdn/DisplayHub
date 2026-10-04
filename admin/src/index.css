@@ -709,15 +709,6 @@ button:focus-visible {
   justify-content: space-between;
 }
 
-.swiper-slide { width: 280px;    cursor: grab; }
-
-.swiper-slide img {
-  max-width: 100%;    margin: 1rem 0;
-  background-color: white;
-  box-shadow: rgba(14, 30, 37, 0.12) 0px 2px 4px 0px, rgba(14, 30, 37, 0.32) 0px 2px 16px 0px;
-  border-radius: 15px;
-}
-
 #html5-qrcode-select-camera{
   background-color: #474747;
   color: #b5b5b5;

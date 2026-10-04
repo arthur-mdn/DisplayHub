@@ -17,6 +17,7 @@ const config = require('./others/config');
 const database = require('./others/database');
 const initDatabase = require('./others/initDatabase');
 const {getAllowedOrigins, getClientOrigins, getAdminOrigins} = require('./others/allowedOrigins');
+const {requireTrustedOrigin} = require('./others/requireTrustedOrigin');
 
 async function start() {
     await database.connect();
@@ -50,6 +51,7 @@ async function start() {
     }));
 
     app.use(cookieParser());
+    app.use(requireTrustedOrigin);
 
     app.use(authRoutes);
     app.use(screenRoutes);

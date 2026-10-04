@@ -28,4 +28,12 @@ fi
 docker exec displayhub-mongodb mongodump "${AUTH_ARGS[@]}" --out "/tmp/displayhub-dump"
 docker cp displayhub-mongodb:/tmp/displayhub-dump "$OUT_DIR"
 docker exec displayhub-mongodb rm -rf /tmp/displayhub-dump
-echo "Backup written to $OUT_DIR"
+
+if [[ -d "$ROOT_DIR/server/uploads" ]]; then
+  cp -a "$ROOT_DIR/server/uploads" "$OUT_DIR/uploads"
+fi
+if [[ -d "$ROOT_DIR/server/public" ]]; then
+  cp -a "$ROOT_DIR/server/public" "$OUT_DIR/public"
+fi
+
+echo "Backup written to $OUT_DIR (mongo dump + uploads/public)"

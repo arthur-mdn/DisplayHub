@@ -12,7 +12,7 @@ const Image = require('../models/Image');
 const {updateWeatherData} = require('../utils/weatherUtils');
 const mongoose = require('mongoose');
 const {processScreenObj} = require('../others/sanitizeScreen');
-const {upload, removeUploadedFiles, validateUploadedFiles} = require('../others/uploadUtils');
+const {upload, removeUploadedFiles, validateUploadedFiles, enforceScreenUploadQuota} = require('../others/uploadUtils');
 const {normalizeAssignableRole, sanitizeAssignablePermissions} = require('../others/screenRoles');
 
 async function ensureScreenMember(req, res, next) {
@@ -26,6 +26,31 @@ async function ensureScreenMember(req, res, next) {
     } catch (error) {
         res.status(500).send({error: 'Erreur serveur'});
     }
+}
+
+function assertOwnedIdList(currentIds, newOrder) {
+    if (!Array.isArray(newOrder)) {
+        return {ok: false, error: 'newOrder doit être un tableau'};
+    }
+    const current = currentIds.map((id) => id.toString());
+    const next = newOrder.map((id) => id?.toString?.() || String(id));
+    if (next.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+        return {ok: false, error: 'Identifiant invalide dans newOrder'};
+    }
+    if (next.length !== current.length) {
+        return {ok: false, error: 'newOrder doit contenir exactement les éléments existants'};
+    }
+    const currentSet = new Set(current);
+    const nextSet = new Set(next);
+    if (currentSet.size !== nextSet.size) {
+        return {ok: false, error: 'newOrder contient des doublons ou des éléments étrangers'};
+    }
+    for (const id of nextSet) {
+        if (!currentSet.has(id)) {
+            return {ok: false, error: 'Identifiant extérieur à cet écran'};
+        }
+    }
+    return {ok: true, ids: next};
 }
 
 
@@ -76,6 +101,12 @@ router.post('/screens/update', verifyToken, ensureScreenMember, upload.fields([
     try {
         if (req.files && !validateUploadedFiles(req.files)) {
             return res.status(400).send({error: 'Fichier image invalide'});
+        }
+        if (req.files) {
+            const quota = await enforceScreenUploadQuota(screenId, req.files);
+            if (!quota.ok) {
+                return res.status(400).send({error: quota.error});
+            }
         }
 
         let screen = req.screen;
@@ -209,6 +240,12 @@ router.post('/screens/icons', verifyToken, checkUserPermissions(['icons']), uplo
     if (req.files && !validateUploadedFiles(req.files)) {
         return res.status(400).send({error: 'Fichier image invalide'});
     }
+    if (req.files) {
+        const quota = await enforceScreenUploadQuota(screenId, req.files);
+        if (!quota.ok) {
+            return res.status(400).send({error: quota.error});
+        }
+    }
 
     if (req.files) {
         for (const file of req.files) {
@@ -297,8 +334,13 @@ router.post('/screens/icons/reorder', verifyToken, checkUserPermissions(["icons"
         return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
     }
 
+    const ownership = assertOwnedIdList(screen.icons || [], newOrder);
+    if (!ownership.ok) {
+        return res.status(400).send({error: ownership.error});
+    }
+
     try {
-        const updatedScreen = await Screen.findByIdAndUpdate(screenId, {'icons': newOrder}, {new: true});
+        const updatedScreen = await Screen.findByIdAndUpdate(screenId, {'icons': ownership.ids}, {new: true});
         socketUtils.emitConfigUpdate(screenId, updatedScreen);
         const screenObj = processScreenObj(updatedScreen, req.user.userId);
         res.send({success: true, screen: screenObj});
@@ -381,8 +423,21 @@ router.post('/screens/directions/reorder', verifyToken, checkUserPermissions(["d
     if (!screen) {
         return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
     }
+
+    const newOrder = req.body.newOrder;
+    if (!Array.isArray(newOrder)) {
+        return res.status(400).send({error: 'newOrder doit être un tableau'});
+    }
+    const ownership = assertOwnedIdList(
+        (screen.directions || []).map((d) => d._id),
+        newOrder.map((d) => d?._id)
+    );
+    if (!ownership.ok) {
+        return res.status(400).send({error: ownership.error});
+    }
+
     try {
-        screen.directions = req.body.newOrder;
+        screen.directions = newOrder;
         await screen.save();
         socketUtils.emitConfigUpdate(screenId, screen);
         const screenObj = processScreenObj(screen, req.user.userId);
@@ -403,6 +458,12 @@ router.post('/screens/photos', verifyToken, checkUserPermissions(["photos"]), up
     }
     if (req.files && !validateUploadedFiles(req.files)) {
         return res.status(400).send({error: 'Fichier image invalide'});
+    }
+    if (req.files) {
+        const quota = await enforceScreenUploadQuota(screenId, req.files);
+        if (!quota.ok) {
+            return res.status(400).send({error: quota.error});
+        }
     }
     if (req.files) {
 
@@ -462,8 +523,13 @@ router.post('/screens/photos/reorder', verifyToken, checkUserPermissions(["photo
         return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
     }
 
+    const ownership = assertOwnedIdList(screen.photos || [], newOrder);
+    if (!ownership.ok) {
+        return res.status(400).send({error: ownership.error});
+    }
+
     try {
-        const updatedScreen = await Screen.findByIdAndUpdate(screenId, {'photos': newOrder}, {new: true});
+        const updatedScreen = await Screen.findByIdAndUpdate(screenId, {'photos': ownership.ids}, {new: true});
         socketUtils.emitConfigUpdate(screenId, updatedScreen);
         const screenObj = processScreenObj(updatedScreen, req.user.userId);
         res.send({success: true, screen: screenObj});
@@ -559,7 +625,6 @@ router.put('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed
     res.send({success: true, message: 'Permissions modifiées avec succès'});
 });
 
-// Supprimer un utilisateur d'un écran
 router.delete('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed_users"]), async (req, res) => {
     const {userId} = req.params;
     const screenId = req.selectedScreen;
@@ -567,7 +632,11 @@ router.delete('/screens/users/:userId', verifyToken, checkUserPermissions(["allo
     const screen = await Screen.findById(screenId);
     if (!screen) return res.status(404).send({error: 'Écran non trouvé'});
 
-    if (screen.users.find(u => u.user.toString() === userId).role === 'creator') {
+    const member = screen.users.find(u => u.user.toString() === userId);
+    if (!member) {
+        return res.status(404).send({error: 'Utilisateur non trouvé sur cet écran'});
+    }
+    if (member.role === 'creator') {
         return res.status(403).send({error: 'Impossible de supprimer le créateur de l\'écran'});
     }
 

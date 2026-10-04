@@ -29,8 +29,9 @@ docker compose -f docker-compose.prod.yml up --build -d
 
 ```bash
 ./scripts/backup-mongo.sh
-./scripts/restore-mongo.sh ./backups/displayhub-YYYYMMDD-HHMMSS/displayhub-dump
+./scripts/restore-mongo.sh ./backups/displayhub-YYYYMMDD-HHMMSS
 ```
+Backup/restore covers Mongo plus `server/uploads` and `server/public`.
 
 ### Install the server dependencies
 ```bash

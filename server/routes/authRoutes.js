@@ -17,6 +17,12 @@ const loginRateLimit = rateLimit({
     keyFn: (req) => `${req.ip}:${(req.body?.email || '').toLowerCase()}`
 });
 
+const authIpRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    keyFn: (req) => `auth-ip:${req.ip}`
+});
+
 function signSessionToken(user) {
     return jwt.sign(
         {userId: user._id, tokenVersion: user.tokenVersion || 0},
@@ -25,7 +31,7 @@ function signSessionToken(user) {
     );
 }
 
-router.post('/auth/login', loginRateLimit, async (req, res) => {
+router.post('/auth/login', authIpRateLimit, loginRateLimit, async (req, res) => {
     const {email, password} = req.body;
 
     try {
@@ -54,7 +60,7 @@ router.post('/auth/login', loginRateLimit, async (req, res) => {
     }
 });
 
-router.post('/auth/register', loginRateLimit, async (req, res) => {
+router.post('/auth/register', authIpRateLimit, loginRateLimit, async (req, res) => {
     try {
         const {email, password, lastName, firstName} = req.body;
 

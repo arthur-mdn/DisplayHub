@@ -3,6 +3,8 @@ const path = require('path');
 const multer = require('multer');
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_IMAGES_PER_SCREEN = 100;
+const MAX_UPLOAD_BYTES_PER_SCREEN = 200 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 
 const IMAGE_SIGNATURES = [
@@ -98,9 +100,67 @@ function validateUploadedFiles(files) {
     return true;
 }
 
+function flattenUploadedFiles(files) {
+    const list = [];
+    if (!files) return list;
+    if (Array.isArray(files)) list.push(...files);
+    else Object.values(files).forEach((group) => {
+        if (Array.isArray(group)) list.push(...group);
+    });
+    return list;
+}
+
+function getFileSizeSafe(filePath) {
+    try {
+        return fs.statSync(filePath).size;
+    } catch {
+        return 0;
+    }
+}
+
+async function enforceScreenUploadQuota(screenId, files) {
+    const Image = require('../models/Image');
+    const incoming = flattenUploadedFiles(files);
+    if (incoming.length === 0) {
+        return {ok: true};
+    }
+
+    const existing = await Image.find({
+        screen: screenId,
+        $or: [{system: null}, {system: {$exists: false}}]
+    }).select('value').lean();
+
+    if (existing.length + incoming.length > MAX_IMAGES_PER_SCREEN) {
+        removeUploadedFiles(files);
+        return {
+            ok: false,
+            error: `Quota images atteint (${MAX_IMAGES_PER_SCREEN} fichiers max par écran)`
+        };
+    }
+
+    let totalBytes = incoming.reduce((sum, file) => sum + (file.size || getFileSizeSafe(file.path)), 0);
+    for (const image of existing) {
+        if (!image.value || !String(image.value).startsWith('uploads/')) continue;
+        totalBytes += getFileSizeSafe(image.value);
+    }
+
+    if (totalBytes > MAX_UPLOAD_BYTES_PER_SCREEN) {
+        removeUploadedFiles(files);
+        return {
+            ok: false,
+            error: 'Quota disque atteint (200 Mo max par écran)'
+        };
+    }
+
+    return {ok: true};
+}
+
 module.exports = {
     upload,
     MAX_FILE_SIZE,
+    MAX_IMAGES_PER_SCREEN,
+    MAX_UPLOAD_BYTES_PER_SCREEN,
     removeUploadedFiles,
-    validateUploadedFiles
+    validateUploadedFiles,
+    enforceScreenUploadQuota
 };
