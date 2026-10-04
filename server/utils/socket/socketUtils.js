@@ -34,6 +34,28 @@ const clearScreenSocketBindings = (screenId, exceptSocketId = null) => {
     }
 };
 
+const disconnectScreenSockets = (screenId, {exceptSocketId = null, event = 'screen_deleted'} = {}) => {
+    if (!io) {
+        clearScreenSocketBindings(screenId, exceptSocketId);
+        return;
+    }
+    const id = screenId?.toString?.() || screenId;
+    for (const socketId of Object.keys(socketMap)) {
+        if (exceptSocketId && socketId === exceptSocketId) continue;
+        if (socketMap[socketId].debugOnly) continue;
+        if (socketMap[socketId].screenId?.toString?.() === id || socketMap[socketId].screenId === id) {
+            const screenSocket = io.sockets.sockets.get(socketId);
+            delete socketMap[socketId];
+            if (screenSocket) {
+                if (event) {
+                    screenSocket.emit(event);
+                }
+                screenSocket.disconnect(true);
+            }
+        }
+    }
+};
+
 const associateScreenSocket = (screenId, socketId) => {
     clearScreenSocketBindings(screenId, socketId);
     socketMap[socketId] = {screenId: screenId.toString(), added: Date.now()};
@@ -281,6 +303,8 @@ module.exports = {
     getScreenId,
     getSocketId,
     hasOtherSocketForScreen,
+    clearScreenSocketBindings,
+    disconnectScreenSockets,
     emitScreenDeletion,
     getScreenSocketMap,
     getSocketList,

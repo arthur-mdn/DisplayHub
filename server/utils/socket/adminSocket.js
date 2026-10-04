@@ -6,16 +6,43 @@ const {checkUserPermissionsOfThisScreen, isUserSuperAdmin} = require('../../othe
 const {generateDeviceToken, hashDeviceToken} = require('../../others/deviceToken');
 const config = require('../../others/config');
 
-async function assertActiveSession(userId, tokenVersion) {
-    const user = await User.findById(userId).select('tokenVersion status userRole');
+async function assertActiveSession(sessionToken, expectedUserId, expectedTokenVersion) {
+    let decoded;
+    try {
+        decoded = verify(sessionToken, config.secretKey);
+    } catch {
+        return null;
+    }
+
+    if (!decoded?.userId || decoded.userId.toString() !== expectedUserId.toString()) {
+        return null;
+    }
+    if ((decoded.tokenVersion ?? 0) !== expectedTokenVersion) {
+        return null;
+    }
+    if (!decoded.exp || decoded.exp * 1000 <= Date.now()) {
+        return null;
+    }
+
+    const user = await User.findById(expectedUserId).select('tokenVersion status userRole');
     if (!user) return null;
     if (user.status && ['disabled', 'pending', 'blocked'].includes(user.status)) {
         return null;
     }
-    if ((user.tokenVersion || 0) !== tokenVersion) {
+    if ((user.tokenVersion || 0) !== expectedTokenVersion) {
         return null;
     }
     return user;
+}
+
+function safeHandler(handler) {
+    return async (...args) => {
+        try {
+            await handler(...args);
+        } catch (error) {
+            console.error('Admin socket handler error:', error);
+        }
+    };
 }
 
 module.exports = (io, socket) => {
@@ -33,7 +60,7 @@ module.exports = (io, socket) => {
         const userId = decoded.userId;
         const tokenVersion = decoded.tokenVersion ?? 0;
 
-        assertActiveSession(userId, tokenVersion).then((user) => {
+        assertActiveSession(sessionToken, userId, tokenVersion).then((user) => {
             if (!user) {
                 socket.disconnect();
                 return;
@@ -42,18 +69,18 @@ module.exports = (io, socket) => {
             console.log('Admin connected:', socket.id, userId);
             socketUtils.associateAdminSocket(userId, socket.id);
 
-            const withValidSession = (handler) => async (...args) => {
-                const activeUser = await assertActiveSession(userId, tokenVersion);
+            const withValidSession = (handler) => safeHandler(async (...args) => {
+                const activeUser = await assertActiveSession(sessionToken, userId, tokenVersion);
                 if (!activeUser) {
                     socket.emit('session_revoked');
                     socket.disconnect(true);
                     return;
                 }
                 return handler(...args);
-            };
+            });
 
             socket.on('admin_request_client_control', withValidSession(async (data) => {
-                const {screenId, command, commandId, value} = data;
+                const {screenId, command, commandId, value} = data || {};
                 const screen = await Screen.findById(screenId);
                 const permissionGranted = await checkUserPermissionsOfThisScreen('control', screenId, userId);
 
@@ -105,13 +132,9 @@ module.exports = (io, socket) => {
                     console.log('Unauthorized adminAskSocketRefresh from', userId);
                     return;
                 }
-                try {
-                    const screenSocket = io.sockets.sockets.get(targetSocketId);
-                    if (screenSocket) {
-                        screenSocket.emit('refresh');
-                    }
-                } catch (error) {
-                    console.error('Erreur lors du refresh de l\'écran:', error);
+                const screenSocket = io.sockets.sockets.get(targetSocketId);
+                if (screenSocket) {
+                    screenSocket.emit('refresh');
                 }
             }));
 
@@ -120,29 +143,34 @@ module.exports = (io, socket) => {
                     console.log('Unauthorized adminOrderToChangeScreenId from', userId);
                     return;
                 }
-                const targetSocket = io.sockets.sockets.get(data.socketId);
+                const targetSocket = io.sockets.sockets.get(data?.socketId);
                 if (!targetSocket) {
                     console.log('SocketId not found');
                     return;
                 }
-                try {
-                    const screen = await Screen.findById(data.newScreenId).select('+deviceTokenHash');
-                    if (!screen) {
-                        console.log('Screen not found');
-                        return;
-                    }
-                    const deviceToken = generateDeviceToken();
-                    screen.deviceTokenHash = hashDeviceToken(deviceToken);
-                    screen.deviceTokenIssuedAt = new Date();
-                    await screen.save();
-
-                    targetSocket.emit('adminChangeScreenId', {
-                        _id: screen._id.toString(),
-                        deviceToken
-                    });
-                } catch (error) {
-                    console.log(error);
+                const screen = await Screen.findById(data.newScreenId).select('+deviceTokenHash');
+                if (!screen) {
+                    console.log('Screen not found');
+                    return;
                 }
+
+                const deviceToken = generateDeviceToken();
+                screen.deviceTokenHash = hashDeviceToken(deviceToken);
+                screen.deviceTokenIssuedAt = new Date();
+                await screen.save();
+
+                socketUtils.disconnectScreenSockets(screen._id, {
+                    exceptSocketId: data.socketId,
+                    event: 'screen_deleted'
+                });
+                await Screen.findByIdAndUpdate(screen._id, {status: 'offline'});
+                await socketUtils.emitScreenStatusToMembers(screen._id, 'offline');
+
+                targetSocket.emit('adminChangeScreenId', {
+                    _id: screen._id.toString(),
+                    deviceToken
+                });
+                await socketUtils.emitSocketListToAllAdmins();
             }));
 
             socket.on('adminOrderToResetScreen', withValidSession(async (data) => {
@@ -150,7 +178,7 @@ module.exports = (io, socket) => {
                     console.log('Unauthorized adminOrderToResetScreen from', userId);
                     return;
                 }
-                if (!socketUtils.isSocketConnected(data.socketId)) {
+                if (!socketUtils.isSocketConnected(data?.socketId)) {
                     console.log('SocketId not found');
                     return;
                 }
@@ -160,10 +188,10 @@ module.exports = (io, socket) => {
                 }
             }));
 
-            socket.on('disconnect', async () => {
+            socket.on('disconnect', safeHandler(async () => {
                 console.log(`Admin disconnected: ${userId}`);
                 socketUtils.removeAdminSocketId(socket.id);
-            });
+            }));
         }).catch(() => {
             socket.disconnect();
         });
