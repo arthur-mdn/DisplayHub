@@ -1,5 +1,7 @@
-// utils/socketUtils.js
-const Screen = require("../../models/Screen");
+const Screen = require('../../models/Screen');
+const User = require('../../models/User');
+const {sanitizeScreen} = require('../../others/sanitizeScreen');
+
 let io = null;
 const socketMap = {};
 const adminSocketMap = {};
@@ -11,9 +13,10 @@ const setIo = (newIo) => {
 const emitConfigUpdate = (screenId, updatedScreen) => {
     const socketId = getSocketId(screenId);
     if (socketId && io.sockets.sockets.get(socketId)) {
-        io.to(socketId).emit('config_updated', updatedScreen);
+        io.to(socketId).emit('config_updated', sanitizeScreen(updatedScreen));
     }
 };
+
 const emitScreenDeletion = (screenId) => {
     const socketId = getSocketId(screenId);
     if (socketId && io.sockets.sockets.get(socketId)) {
@@ -27,15 +30,15 @@ const associateScreenSocket = (screenId, socketId) => {
 
 const associateSocketDebug = (socketId, debugScreen) => {
     socketMap[socketId] = {screenId: debugScreen._id, debugScreen, added: Date.now()};
-}
+};
 
 const associateSocketWaitingForConfiguration = (socketId, associationCode) => {
     socketMap[socketId] = {associationCode, added: Date.now()};
-}
+};
 
 const associateAdminSocket = (adminId, socketId) => {
-    adminSocketMap[socketId] = adminId;
-}
+    adminSocketMap[socketId] = adminId.toString();
+};
 
 const getAdminSocketId = (adminId) => {
     for (const socketId in adminSocketMap) {
@@ -44,20 +47,20 @@ const getAdminSocketId = (adminId) => {
         }
     }
     return null;
-}
+};
 
 const getAdminId = (socketId) => {
     return adminSocketMap[socketId] ?? null;
-}
+};
 
 const removeAdminSocketId = (socketId) => {
     if (adminSocketMap[socketId]) {
         const adminId = adminSocketMap[socketId];
         delete adminSocketMap[socketId];
-        return adminId
+        return adminId;
     }
     return null;
-}
+};
 
 const getSocketId = (lookingForThisScreenId) => {
     for (const socketId in socketMap) {
@@ -79,23 +82,20 @@ const getScreenId = (lookingForThisSocketId) => {
 
 const removeSocketId = (socketId) => {
     if (socketMap[socketId]) {
-        const [screenId, debugScreen] = getScreenId(socketId);
+        const [screenId] = getScreenId(socketId);
         delete socketMap[socketId];
-        return screenId
+        return screenId;
     }
     return null;
 };
 
 const getScreenSocketMap = () => {
     return socketMap;
-}
+};
 
 const isSocketConnected = (socketId) => {
-    if (socketMap[socketId]) {
-        return true;
-    }
-    return false;
-}
+    return Boolean(socketMap[socketId]);
+};
 
 const getSocketIdWithThisAssociationCode = (associationCode) => {
     for (const socketId in socketMap) {
@@ -104,45 +104,62 @@ const getSocketIdWithThisAssociationCode = (associationCode) => {
         }
     }
     return null;
-}
+};
 
-async function getSocketList() {
-    let socketList = getScreenSocketMap();
-    const socketListArray = []
-    for (const socketId in socketList) {
-        const socketDetails = await getSocketDetails(socketId);
-        socketListArray.push(socketDetails);
-    }
-    return socketListArray;
-}
-
-async function getAdminSocketList() {
-    let socketList = adminSocketMap;
-    const socketListArray = []
-    for (const socketId in socketList) {
-        socketListArray[socketId] = socketList[socketId];
-    }
-    return socketListArray;
-}
-
-async function getSocketDetails(socketId) {
+async function getSocketDetails(socketId, {includeAssociationCode = true} = {}) {
     if (!socketMap[socketId]) {
         return false;
     }
     const [screenId, debugScreen] = getScreenId(socketId);
 
     if (debugScreen) {
-        return {socketId, debugScreen, added: socketMap[socketId].added};
+        return {socketId, debugScreen: sanitizeScreen(debugScreen), added: socketMap[socketId].added};
     }
     if (socketMap[socketId].associationCode) {
-        return {socketId, associationCode: socketMap[socketId].associationCode, added: socketMap[socketId].added};
+        const details = {socketId, added: socketMap[socketId].added, waiting: true};
+        if (includeAssociationCode) {
+            details.associationCode = socketMap[socketId].associationCode;
+        }
+        return details;
     }
     try {
-        const screen = await Screen.findById(screenId).populate('users.user');
-        return {socketId, screen, added: socketMap[socketId].added};
+        const screen = await Screen.findById(screenId)
+            .populate('users.user', 'email firstName lastName')
+            .select('-deviceTokenHash');
+        return {socketId, screen: sanitizeScreen(screen), added: socketMap[socketId].added};
     } catch (error) {
-        return {socketId, screen: {name: 'Écran inconnu', status: 'offline', added: socketMap[socketId].added}};
+        return {socketId, screen: {name: 'Écran inconnu', status: 'offline'}, added: socketMap[socketId].added};
     }
+}
+
+async function getSocketList({includeAssociationCode = true} = {}) {
+    const socketList = getScreenSocketMap();
+    const socketListArray = [];
+    for (const socketId in socketList) {
+        const socketDetails = await getSocketDetails(socketId, {includeAssociationCode});
+        socketListArray.push(socketDetails);
+    }
+    return socketListArray;
+}
+
+async function getAdminSocketList() {
+    return {...adminSocketMap};
+}
+
+async function getSuperAdminSocketIds() {
+    const ids = [];
+    for (const socketId of Object.keys(adminSocketMap)) {
+        const userId = adminSocketMap[socketId];
+        try {
+            const user = await User.findById(userId).select('userRole');
+            if (user && user.userRole === 'superadmin') {
+                ids.push(socketId);
+            }
+        } catch (error) {
+            console.error('Erreur superadmin check:', error);
+        }
+    }
+    return ids;
 }
 
 async function emitToAllAdmins(message, data) {
@@ -152,12 +169,18 @@ async function emitToAllAdmins(message, data) {
         if (socket) {
             socket.emit(message, data);
         }
-    })
+    });
 }
 
 async function emitSocketListToAllAdmins() {
-    const socketListArray = await getSocketList();
-    await emitToAllAdmins('adminSocketList', socketListArray);
+    const socketListArray = await getSocketList({includeAssociationCode: true});
+    const superAdminSocketIds = await getSuperAdminSocketIds();
+    for (const socketId of superAdminSocketIds) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) {
+            socket.emit('adminSocketList', socketListArray);
+        }
+    }
 }
 
 async function getSocketObject(socketId) {

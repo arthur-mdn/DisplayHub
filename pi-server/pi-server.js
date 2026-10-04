@@ -1,40 +1,49 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { exec } = require('child_process');
+const {execFile} = require('child_process');
 const config = require('./others/config');
 
 const app = express();
-const appVersion = 'pi-0.0.41';
+const appVersion = 'pi-0.0.42';
 
 app.use(cors({
     origin: config.clientUrl,
     methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 app.use(express.json());
 
-const executeCommand = (command) => {
+function requireApiToken(req, res, next) {
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!token || token !== config.apiToken) {
+        return res.status(401).send('Unauthorized');
+    }
+    next();
+}
+
+const executeFile = (file, args = []) => {
     return new Promise((resolve, reject) => {
-        exec(command, (error, stdout, stderr) => {
+        execFile(file, args, (error, stdout, stderr) => {
             if (error) {
                 reject(`exec error: ${error}`);
             } else {
-                resolve({ stdout, stderr });
+                resolve({stdout, stderr});
             }
         });
     });
 };
 
-app.get('/', async (req, res) => {
+app.get('/', requireApiToken, async (req, res) => {
     let availableCommands = ['shutdown', 'reboot', 'update'];
     let defaultValues = {};
 
     try {
-        const detectOutput = await executeCommand('ddcutil detect');
+        const detectOutput = await executeFile('ddcutil', ['detect']);
         if (!detectOutput.stdout.includes('Invalid display')) {
-            const brightnessOutput = await executeCommand('ddcutil getvcp 0x10');
+            const brightnessOutput = await executeFile('ddcutil', ['getvcp', '0x10']);
             const brightnessValue = brightnessOutput.stdout.match(/current value\s*=\s*(\d+)/);
             if (brightnessValue) {
                 defaultValues.brightness = parseInt(brightnessValue[1], 10);
@@ -44,11 +53,11 @@ app.get('/', async (req, res) => {
     } catch (error) {
         console.error(error);
     } finally {
-        res.json({ appVersion, availableCommands, defaultValues });
+        res.json({appVersion, availableCommands, defaultValues});
     }
 });
 
-app.post('/execute', async (req, res) => {
+app.post('/execute', requireApiToken, async (req, res) => {
     const command = req.body.command;
     const value = req.body.value;
 
@@ -60,32 +69,37 @@ app.post('/execute', async (req, res) => {
         switch (command) {
             case 'shutdown':
                 res.send('Shutting down...');
-                await executeCommand('sudo shutdown now');
+                await executeFile('sudo', ['shutdown', 'now']);
                 break;
             case 'reboot':
                 res.send('Rebooting...');
-                await executeCommand('sudo reboot');
+                await executeFile('sudo', ['reboot']);
                 break;
-            case 'update':
-                const output = await executeCommand('git pull');
+            case 'update': {
+                const output = await executeFile('git', ['pull']);
                 if (!output.stdout.includes('Already up to date.') && !output.stdout.includes('Déjà à jour.')) {
-                    res.json({ message: 'Updating and rebooting...'});
-                    await executeCommand('sudo reboot');
+                    res.json({message: 'Updating and rebooting...'});
+                    await executeFile('sudo', ['reboot']);
                 } else {
-                    res.json({ message: 'Already up to date.' });
+                    res.json({message: 'Already up to date.'});
                 }
                 break;
-            case 'brightness':
-                if (!value) {
-                    return res.status(400).send('No brightness provided.');
+            }
+            case 'brightness': {
+                const brightness = Number(value);
+                if (!Number.isInteger(brightness) || brightness < 0 || brightness > 100) {
+                    return res.status(400).send('Brightness must be an integer between 0 and 100.');
                 }
-                const detectOutput = await executeCommand('ddcutil detect');
+                const detectOutput = await executeFile('ddcutil', ['detect']);
                 if (!detectOutput.stdout.includes('Invalid display')) {
-                    await executeCommand(`ddcutil setvcp 10 ${value}`);
-                    const brightnessOutput = await executeCommand(`ddcutil getvcp 0x10`);
+                    await executeFile('ddcutil', ['setvcp', '10', String(brightness)]);
+                    const brightnessOutput = await executeFile('ddcutil', ['getvcp', '0x10']);
                     const brightnessValue = brightnessOutput.stdout.match(/current value\s*=\s*(\d+)/);
                     if (brightnessValue) {
-                        res.json({ message: `Brightness set to ${brightnessValue[1]}.`, valueConfirmed: parseInt(brightnessValue[1], 10) });
+                        res.json({
+                            message: `Brightness set to ${brightnessValue[1]}.`,
+                            valueConfirmed: parseInt(brightnessValue[1], 10)
+                        });
                     } else {
                         res.status(500).send('Failed to get current brightness value.');
                     }
@@ -93,6 +107,7 @@ app.post('/execute', async (req, res) => {
                     res.status(500).send('Monitor not supported.');
                 }
                 break;
+            }
             default:
                 res.status(400).send('Invalid command.');
         }
@@ -102,6 +117,6 @@ app.post('/execute', async (req, res) => {
     }
 });
 
-app.listen(config.port, () => {
-    console.log(`Pi-server listening on port ${config.port}`);
+app.listen(config.port, '127.0.0.1', () => {
+    console.log(`Pi-server listening on 127.0.0.1:${config.port}`);
 });

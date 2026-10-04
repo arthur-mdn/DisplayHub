@@ -8,73 +8,73 @@ const {Server} = require('socket.io');
 const socketUtils = require('./utils/socket/socketUtils');
 const clientSocket = require('./utils/socket/clientSocket');
 const adminSocket = require('./utils/socket/adminSocket');
-const superadminSocket = require('./utils/socket/superadminSocket');
 
-const Screen = require('./models/Screen');
 const authRoutes = require('./routes/authRoutes');
 const screenRoutes = require('./routes/screenRoutes');
 const apiRoutes = require('./routes/apiRoutes');
 const defaultRoutes = require('./routes/defaultRoutes');
 const config = require('./others/config');
-console.log(config);
 const database = require('./others/database');
-const initDatabase = require("./others/initDatabase");
+const initDatabase = require('./others/initDatabase');
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: [config.clientUrl, config.adminUrl],
-        credentials: true
-    },
-    pingInterval: 10000,
-    pingTimeout: 5000
-});
-socketUtils.setIo(io);
+async function start() {
+    await database.connect();
+    await initDatabase();
 
-app.use(bodyParser.json());
+    const app = express();
+    const server = http.createServer(app);
+    const io = new Server(server, {
+        cors: {
+            origin: [config.clientUrl, config.adminUrl],
+            credentials: true
+        },
+        pingInterval: 10000,
+        pingTimeout: 5000
+    });
+    socketUtils.setIo(io);
 
-app.use(cors((req, callback) => {
-    const allowedOrigins = [config.clientUrl, config.adminUrl];
-    let corsOptions;
+    app.use(bodyParser.json());
 
-    if (allowedOrigins.includes(req.header('Origin'))) {
-        corsOptions = {origin: true, credentials: true};
-    } else {
-        corsOptions = {origin: false};
-    }
+    app.use(cors((req, callback) => {
+        const allowedOrigins = [config.clientUrl, config.adminUrl];
+        let corsOptions;
 
-    callback(null, corsOptions);
-}));
+        if (allowedOrigins.includes(req.header('Origin'))) {
+            corsOptions = {origin: true, credentials: true};
+        } else {
+            corsOptions = {origin: false};
+        }
 
-app.use(cookieParser({
-    sameSite: 'none',
-    secure: true
-}));
+        callback(null, corsOptions);
+    }));
 
-database.connect();
-initDatabase();
+    app.use(cookieParser());
 
-app.use(authRoutes);
-app.use(screenRoutes);
-app.use(apiRoutes);
-app.use(defaultRoutes);
-app.use('/uploads', express.static('uploads'));
-app.use('/public', express.static('public'));
+    app.use(authRoutes);
+    app.use(screenRoutes);
+    app.use(apiRoutes);
+    app.use(defaultRoutes);
+    app.use('/uploads', express.static('uploads'));
+    app.use('/public', express.static('public'));
 
-io.on('connection', (socket) => {
-    const origin = socket.handshake.headers.origin;
-    if (origin === config.clientUrl) {
-        clientSocket(io, socket);
-    } else if (origin === config.adminUrl) {
-        adminSocket(io, socket);
-        superadminSocket(io, socket);
-    } else {
-        console.log('Unknown origin:', origin);
-        socket.disconnect();
-    }
-});
+    io.on('connection', (socket) => {
+        const origin = socket.handshake.headers.origin;
+        if (origin === config.clientUrl) {
+            clientSocket(io, socket);
+        } else if (origin === config.adminUrl) {
+            adminSocket(io, socket);
+        } else {
+            console.log('Unknown origin:', origin);
+            socket.disconnect();
+        }
+    });
 
-server.listen(config.port, () => {
-    console.log('Server started on port ' + config.port);
+    server.listen(config.port, () => {
+        console.log('Server started on port ' + config.port);
+    });
+}
+
+start().catch((error) => {
+    console.error('Failed to start server:', error);
+    process.exit(1);
 });

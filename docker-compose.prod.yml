@@ -1,0 +1,118 @@
+services:
+  DisplayHub-mongodb:
+    image: mongo:8
+    container_name: displayhub-mongodb
+    restart: always
+    command: ["mongod", "--config", "/etc/mongo/mongod.conf"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: DisplayHub
+    volumes:
+      - DisplayHub_mongodb_data:/data/db
+      - ./mongo/mongod.conf:/etc/mongo/mongod.conf:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "-u", "${MONGO_ROOT_USER}", "-p", "${MONGO_ROOT_PASSWORD}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  DisplayHub-server:
+    container_name: displayhub-server
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: displayhub-server
+    restart: always
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      COOKIE_SECURE: "true"
+      DB_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@DisplayHub-mongodb:27017/DisplayHub?authSource=admin
+    volumes:
+      - ./server/uploads:/app/uploads
+      - ./server/public:/app/public
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.DisplayHub-server.rule=Host(`${VITE_SERVER_URL}`)"
+      - "traefik.http.routers.DisplayHub-server.entrypoints=websecure"
+      - "traefik.http.routers.DisplayHub-server.tls.certresolver=myresolver"
+      - "traefik.http.services.DisplayHub-server.loadbalancer.server.port=${VITE_SERVER_PORT}"
+    depends_on:
+      DisplayHub-mongodb:
+        condition: service_healthy
+
+  DisplayHub-client:
+    container_name: displayhub-client
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_SCHEME: ${VITE_SCHEME}
+        VITE_CLIENT_URL: ${VITE_CLIENT_URL}
+        VITE_SERVER_URL: ${VITE_SERVER_URL}
+        VITE_ADMIN_URL: ${VITE_ADMIN_URL}
+        VITE_COOKIE_DOMAIN: ${VITE_COOKIE_DOMAIN}
+        VITE_PI_SERVER_URL: ${VITE_PI_SERVER_URL:-http://127.0.0.1:3002}
+        VITE_PI_API_TOKEN: ${VITE_PI_API_TOKEN}
+    image: displayhub-client
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.DisplayHub-client.rule=Host(`${VITE_CLIENT_URL}`)"
+      - "traefik.http.routers.DisplayHub-client.entrypoints=websecure"
+      - "traefik.http.routers.DisplayHub-client.tls.certresolver=myresolver"
+      - "traefik.http.services.DisplayHub-client.loadbalancer.server.port=80"
+    depends_on:
+      - DisplayHub-server
+
+  DisplayHub-admin:
+    container_name: displayhub-admin
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+      args:
+        VITE_SCHEME: ${VITE_SCHEME}
+        VITE_CLIENT_URL: ${VITE_CLIENT_URL}
+        VITE_SERVER_URL: ${VITE_SERVER_URL}
+        VITE_ADMIN_URL: ${VITE_ADMIN_URL}
+        VITE_COOKIE_DOMAIN: ${VITE_COOKIE_DOMAIN}
+    image: displayhub-admin
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.DisplayHub-admin.rule=Host(`${VITE_ADMIN_URL}`)"
+      - "traefik.http.routers.DisplayHub-admin.entrypoints=websecure"
+      - "traefik.http.routers.DisplayHub-admin.tls.certresolver=myresolver"
+      - "traefik.http.services.DisplayHub-admin.loadbalancer.server.port=80"
+    depends_on:
+      - DisplayHub-server
+
+  DisplayHub-vitrine:
+    container_name: displayhub-vitrine
+    build:
+      context: ./vitrine
+      dockerfile: Dockerfile
+    image: displayhub-vitrine
+    restart: always
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.DisplayHub-vitrine.rule=Host(`${VITE_VITRINE_URL}`)"
+      - "traefik.http.routers.DisplayHub-vitrine.entrypoints=websecure"
+      - "traefik.http.routers.DisplayHub-vitrine.tls.certresolver=myresolver"
+      - "traefik.http.services.DisplayHub-vitrine.loadbalancer.server.port=3000"
+    depends_on:
+      - DisplayHub-server
+
+volumes:
+  DisplayHub_mongodb_data:
+    driver: local

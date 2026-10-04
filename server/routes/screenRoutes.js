@@ -1,76 +1,30 @@
-//about/screenRoutes.js
-const Screen = require("../models/Screen")
-const User = require("../models/User")
-const express = require("express");
+const Screen = require('../models/Screen');
+const User = require('../models/User');
+const express = require('express');
 const router = express.Router();
 const verifyToken = require('../others/verifyToken');
-const {checkUserPermissions} = require("../others/checkUserPermissions");
-const cityList = require("../datas/villesFR_NoDoubles.json");
-const multer = require("multer");
-const path = require("path");
+const {checkUserPermissions, isUserSuperAdmin} = require('../others/checkUserPermissions');
+const cityList = require('../datas/villesFR_NoDoubles.json');
 const socketUtils = require('../utils/socket/socketUtils');
-const axios = require("axios");
-const Meteo = require("../models/Meteo");
-const Image = require("../models/Image");
-const {updateWeatherData} = require("../utils/weatherUtils");
-const mongoose = require("mongoose");
+const axios = require('axios');
+const Meteo = require('../models/Meteo');
+const Image = require('../models/Image');
+const {updateWeatherData} = require('../utils/weatherUtils');
+const mongoose = require('mongoose');
+const {processScreenObj} = require('../others/sanitizeScreen');
+const {upload, removeUploadedFiles, validateUploadedFiles} = require('../others/uploadUtils');
 
-
-const imageFilter = (req, file, cb) => {
-    if (!file.mimetype.startsWith('image/')) {
-        return cb(new Error('Seuls les fichiers image sont autorisés!'), false);
+async function ensureScreenMember(req, res, next) {
+    try {
+        const screen = await Screen.findOne({_id: req.selectedScreen, 'users.user': req.user.userId});
+        if (!screen) {
+            return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
+        }
+        req.screen = screen;
+        next();
+    } catch (error) {
+        res.status(500).send({error: 'Erreur serveur'});
     }
-    cb(null, true);
-};
-
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'uploads/');
-    },
-    filename: function (req, file, cb) {
-        cb(null, file.fieldname + '-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6 + 2) + path.extname(file.originalname));
-    }
-});
-
-const upload = multer({
-    storage: storage,
-    fileFilter: imageFilter
-});
-
-
-function processScreenObj(screen, currentUserId) {
-    const screenObj = screen.toObject();
-
-    // Trouver l'utilisateur et ajuster les permissions
-    const user = screen.users.find(user => user.user._id.toString() === currentUserId);
-    if (user && user.role === "creator") {
-        screenObj.permissions = ["creator"];
-    } else {
-        screenObj.permissions = user.permissions;
-    }
-
-    // Filtrer l'utilisateur actuel de la liste des utilisateurs
-    screenObj.users = screenObj.users.filter(user => user.user._id.toString() !== currentUserId);
-
-    // Supprimer les informations sensibles des comptes utilisateurs (password, socketId)
-    // tout en conservant le "role" et "creation"
-    screenObj.users = screenObj.users.map(user => {
-        const {password, socketId, user: userInfo, ...rest} = user;
-        const {_id, email, firstName, lastName} = userInfo;
-        return {
-            ...rest,
-            user: {
-                _id,
-                email,
-                firstName,
-                lastName,
-                role: user.role,
-                creation: user.creation,
-            }
-        };
-    });
-
-    return screenObj;
 }
 
 
@@ -112,19 +66,24 @@ const hasPermission = async (userId, screenId, attribute) => {
     return user.permissions.includes(attribute);
 };
 
-router.post('/screens/update', verifyToken, upload.fields([
+router.post('/screens/update', verifyToken, ensureScreenMember, upload.fields([
     {name: 'logo', maxCount: 1},
     {name: 'featured_image', maxCount: 1}
 ]), async (req, res) => {
     const screenId = req.selectedScreen;
     const userId = req.user.userId;
     try {
-        let screen = await Screen.findOne({_id: screenId, "users.user": userId});
-        if (!screen) {
-            return res.status(404).send({error: 'Écran non trouvé'});
+        if (req.files && !validateUploadedFiles(req.files)) {
+            return res.status(400).send({error: 'Fichier image invalide'});
         }
 
-        if (req.files && req.files['logo'] && await hasPermission(userId, screenId, "logo")) {
+        let screen = req.screen;
+
+        if (req.files && req.files['logo']) {
+            if (!await hasPermission(userId, screenId, 'logo')) {
+                removeUploadedFiles(req.files);
+                return res.status(403).send({error: 'Permission refusée'});
+            }
             const newLogo = new Image({
                 screen: screenId,
                 type: 'logo',
@@ -141,7 +100,11 @@ router.post('/screens/update', verifyToken, upload.fields([
             screen.featured_image = defaultFeaturedImage._id;
         }
 
-        if (req.files && req.files['featured_image'] && await hasPermission(userId, screenId, "featured_image")) {
+        if (req.files && req.files['featured_image']) {
+            if (!await hasPermission(userId, screenId, 'featured_image')) {
+                removeUploadedFiles(req.files);
+                return res.status(403).send({error: 'Permission refusée'});
+            }
             const newFeaturedImage = new Image({
                 screen: screenId,
                 type: 'featured_image',
@@ -198,21 +161,27 @@ router.post('/screens/update', verifyToken, upload.fields([
         socketUtils.emitConfigUpdate(screenId, populatedScreen);
         res.send({success: true, screenObj: screenObj});
     } catch (error) {
+        removeUploadedFiles(req.files);
         console.error('Erreur lors de la mise à jour :', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
 });
 
 
-// Suppression d'un écran
 router.delete('/screens/', verifyToken, async (req, res) => {
-    const screenId = req.selectedScreen
+    const screenId = req.selectedScreen;
 
     try {
-        const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
+        const screen = await Screen.findOne({_id: screenId, 'users.user': req.user.userId}).populate('users.user');
 
         if (!screen) {
             return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
+        }
+
+        const membership = screen.users.find((u) => u.user._id.toString() === req.user.userId);
+        const superAdmin = await isUserSuperAdmin(req.user.userId);
+        if (!superAdmin && (!membership || membership.role !== 'creator')) {
+            return res.status(403).send({error: 'Seul le créateur peut supprimer cet écran'});
         }
 
         await Screen.findByIdAndDelete(screenId);
@@ -226,13 +195,18 @@ router.delete('/screens/', verifyToken, async (req, res) => {
 });
 
 
-router.post('/screens/icons', verifyToken, upload.array('icon', 10), checkUserPermissions(["icons"]), async (req, res) => {
-    const screenId = req.selectedScreen
+router.post('/screens/icons', verifyToken, checkUserPermissions(['icons']), upload.array('icon', 10), async (req, res) => {
+    const screenId = req.selectedScreen;
 
-    const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
+    const screen = await Screen.findOne({_id: screenId, 'users.user': req.user.userId});
 
     if (!screen) {
+        removeUploadedFiles(req.files);
         return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
+    }
+
+    if (req.files && !validateUploadedFiles(req.files)) {
+        return res.status(400).send({error: 'Fichier image invalide'});
     }
 
     if (req.files) {
@@ -423,7 +397,11 @@ router.post('/screens/photos', verifyToken, checkUserPermissions(["photos"]), up
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
     if (!screen) {
+        removeUploadedFiles(req.files);
         return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
+    }
+    if (req.files && !validateUploadedFiles(req.files)) {
+        return res.status(400).send({error: 'Fichier image invalide'});
     }
     if (req.files) {
 

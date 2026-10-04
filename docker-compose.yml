@@ -1,91 +1,101 @@
 services:
   DisplayHub-mongodb:
-    image: mongo
+    image: mongo:8
+    container_name: displayhub-mongodb
+    restart: unless-stopped
+    command: ["mongod", "--config", "/etc/mongo/mongod.conf"]
+    ports:
+      - "127.0.0.1:27018:27017"
     volumes:
       - DisplayHub_mongodb_data:/data/db
-    container_name: displayhub-mongodb
-    ports:
-      - "27018:${MONGODB_PORT}"
-
-  DisplayHub-client:
-    build:
-      context: ./client
-      dockerfile: ${DOCKERFILE_CLIENT:-Dockerfile}
-    container_name: displayhub-client
-    image: displayhub-client
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.DisplayHub-client.rule=Host(`${VITE_CLIENT_URL}`)"
-      - "traefik.http.routers.DisplayHub-client.entrypoints=websecure"
-      - "traefik.http.routers.DisplayHub-client.tls.certresolver=myresolver"
-    env_file:
-      - .env
-    volumes:
-      - ./client:/app
-      - /app/node_modules
-    ports:
-      - "${VITE_CLIENT_PORT}:${VITE_CLIENT_PORT}"
-
-  DisplayHub-admin:
-    build:
-      context: ./admin
-      dockerfile: ${DOCKERFILE_CLIENT:-Dockerfile.dev}
-    container_name: displayhub-admin
-    image: displayhub-admin
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.DisplayHub-admin.rule=Host(`${VITE_ADMIN_URL}`)"
-      - "traefik.http.routers.DisplayHub-admin.entrypoints=websecure"
-      - "traefik.http.routers.DisplayHub-admin.tls.certresolver=myresolver"
-    env_file:
-      - .env
-    volumes:
-      - ./admin:/app
-      - /app/node_modules
-    ports:
-      - "${VITE_ADMIN_PORT}:${VITE_ADMIN_PORT}"
-
+      - ./mongo/mongod.conf:/etc/mongo/mongod.conf:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   DisplayHub-server:
     build:
       context: ./server
-      dockerfile: ${DOCKERFILE_CLIENT:-Dockerfile.dev}
-    image: displayhub-server
+      dockerfile: Dockerfile.dev
     container_name: displayhub-server
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.DisplayHub-server.rule=Host(`${VITE_SERVER_URL}`)"
-      - "traefik.http.services.DisplayHub-server.loadbalancer.server.port=${VITE_SERVER_PORT}"
-      - "traefik.http.routers.DisplayHub-server.entrypoints=websecure"
-      - "traefik.http.routers.DisplayHub-server.tls.certresolver=myresolver"
+    image: displayhub-server-dev
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      COOKIE_SECURE: "false"
+      DB_URI: mongodb://DisplayHub-mongodb:27017/DisplayHub
     volumes:
       - ./server:/app
       - ./server/uploads:/app/uploads
       - ./server/public:/app/public
       - /app/node_modules
+    ports:
+      - "127.0.0.1:${VITE_SERVER_PORT}:${VITE_SERVER_PORT}"
+    depends_on:
+      DisplayHub-mongodb:
+        condition: service_healthy
+
+  DisplayHub-client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+    container_name: displayhub-client
+    image: displayhub-client-dev
+    restart: unless-stopped
     env_file:
       - .env
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./client:/app
+      - /app/node_modules
     ports:
-      - "${VITE_SERVER_PORT}:${VITE_SERVER_PORT}"
+      - "127.0.0.1:${VITE_CLIENT_PORT}:${VITE_CLIENT_PORT}"
+    depends_on:
+      - DisplayHub-server
+
+  DisplayHub-admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile.dev
+    container_name: displayhub-admin
+    image: displayhub-admin-dev
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./admin:/app
+      - /app/node_modules
+    ports:
+      - "127.0.0.1:${VITE_ADMIN_PORT}:${VITE_ADMIN_PORT}"
+    depends_on:
+      - DisplayHub-server
 
   DisplayHub-vitrine:
     build:
       context: ./vitrine
-      dockerfile: ${DOCKERFILE_CLIENT:-Dockerfile.dev}
-    image: displayhub-vitrine
+      dockerfile: Dockerfile.dev
     container_name: displayhub-vitrine
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.DisplayHub-vitrine.rule=Host(`${VITE_VITRINE_URL}`)"
-      - "traefik.http.routers.DisplayHub-vitrine.entrypoints=websecure"
-      - "traefik.http.routers.DisplayHub-vitrine.tls.certresolver=myresolver"
+    image: displayhub-vitrine-dev
+    restart: unless-stopped
     env_file:
       - .env
+    environment:
+      NODE_ENV: development
     volumes:
       - ./vitrine:/app
       - /app/node_modules
     ports:
-      - "${VITE_VITRINE_PORT}:3000"
+      - "127.0.0.1:${VITE_VITRINE_PORT}:3000"
+    depends_on:
+      - DisplayHub-server
 
 volumes:
   DisplayHub_mongodb_data:

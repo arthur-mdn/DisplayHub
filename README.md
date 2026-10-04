@@ -6,15 +6,40 @@ Made with React + Vite and Node.js + MongoDB + Socket.io.
 ```bash
 git clone https://github.com/arthur-mdn/DisplayHub.git
 cd DisplayHub
+cp .env.example .env
 ```
+
+`SECRET_KEY` and `PI_API_TOKEN` are required. Do not keep the example values in production.
+
+### Docker (recommended)
+
+Development:
+
+```bash
+docker compose up --build
+```
+
+Production (Traefik labels, Mongo auth, no host Mongo port):
+
+```bash
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+### Mongo backup / restore
+
+```bash
+./scripts/backup-mongo.sh
+./scripts/restore-mongo.sh ./backups/displayhub-YYYYMMDD-HHMMSS/displayhub-dump
+```
+
 ### Install the server dependencies
 ```bash
 cd server
 npm install
 ```
-> ⚠️ You will need to duplicate the `.env.example` file to `.env` and update the environment variables.
+> You will need to duplicate the `.env.example` file to `.env` and update the environment variables.
 
-> ⚠️ You will also need to create a MongoDB database and update the `DB_URI` variable in the server .env file.
+> You will also need to create a MongoDB database and update the `DB_URI` variable in the server .env file.
 
 ### Install the client dependencies
 ```bash

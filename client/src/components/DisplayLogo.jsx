@@ -1,60 +1,70 @@
-import React, {useEffect, useState} from "react";
-import {cacheLogo, getCachedLogo} from "../utils/cacheUtils.js";
-import config from "../config.js";
+import React, {useEffect, useState} from 'react';
+import {cacheLogo, getCachedLogo} from '../utils/cacheUtils.js';
+import config from '../config.js';
 
 export default function DisplayLogo({logo, isDarkModeActive}) {
     const [cachedLogo, setCachedLogo] = useState(null);
 
     useEffect(() => {
+        let objectUrl;
+        let cancelled = false;
+
         const loadLogo = async () => {
-            if (logo) {
-                const cachedLogoData = await getCachedLogo(logo._id);
-                if (cachedLogoData) {
-                    if (cachedLogoData.type === "image/svg+xml") {
-                        const reader = new FileReader();
-                        reader.onload = function (event) {
-                            let svgContent = event.target.result;
+            if (!logo) {
+                setCachedLogo(null);
+                return;
+            }
 
-                            if (isDarkModeActive) {
-                                const svgWithStyle = svgContent.replace(
-                                    /<svg([^>]+)>/,
-                                    `<svg$1><style>.fill-white-when-dark-mode{fill:#fff}</style>`
-                                );
-                                const updatedBlob = new Blob([svgWithStyle], {type: "image/svg+xml"});
-                                setCachedLogo(URL.createObjectURL(updatedBlob));
-                            } else {
-                                const svgWithoutDarkMode = svgContent.replace(
-                                    /<style>.*?\.fill-white-when-dark-mode{fill:#fff}.*?<\/style>/,
-                                    (match) => match.replace(/\.fill-white-when-dark-mode{fill:#fff}/, "")
-                                );
+            await cacheLogo(logo);
+            const cachedLogoData = await getCachedLogo(logo._id);
+            if (cancelled) return;
 
-                                const updatedBlob = new Blob([svgWithoutDarkMode], {type: "image/svg+xml"});
-                                setCachedLogo(URL.createObjectURL(updatedBlob));
-                            }
-                        };
+            if (cachedLogoData) {
+                if (cachedLogoData.type === 'image/svg+xml') {
+                    const reader = new FileReader();
+                    reader.onload = function (event) {
+                        if (cancelled) return;
+                        let svgContent = event.target.result;
 
-                        reader.readAsText(cachedLogoData);
-                    } else {
-                        setCachedLogo(URL.createObjectURL(cachedLogoData));
-                    }
+                        if (isDarkModeActive) {
+                            svgContent = svgContent.replace(
+                                /<svg([^>]+)>/,
+                                `<svg$1><style>.fill-white-when-dark-mode{fill:#fff}</style>`
+                            );
+                        } else {
+                            svgContent = svgContent.replace(
+                                /<style>.*?\.fill-white-when-dark-mode{fill:#fff}.*?<\/style>/,
+                                (match) => match.replace(/\.fill-white-when-dark-mode{fill:#fff}/, '')
+                            );
+                        }
+
+                        const updatedBlob = new Blob([svgContent], {type: 'image/svg+xml'});
+                        objectUrl = URL.createObjectURL(updatedBlob);
+                        setCachedLogo(objectUrl);
+                    };
+                    reader.readAsText(cachedLogoData);
                 } else {
-                    setCachedLogo(`${(logo.where === "server" ? config.serverUrl : "") + "/" + logo.value}`);
+                    objectUrl = URL.createObjectURL(cachedLogoData);
+                    setCachedLogo(objectUrl);
                 }
+            } else {
+                setCachedLogo(`${(logo.where === 'server' ? config.serverUrl : '') + '/' + logo.value}`);
             }
         };
 
         loadLogo();
-    }, [logo, isDarkModeActive]);
 
-    useEffect(() => {
-        if (logo) {
-            cacheLogo(logo);
-        }
-    }, [logo]);
+        return () => {
+            cancelled = true;
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [logo, isDarkModeActive]);
 
     return (
         <>
-            {cachedLogo && logo && <img src={cachedLogo} className={"card logo"} alt="Logo"/>}
+            {cachedLogo && logo && <img src={cachedLogo} className={'card logo'} alt="Logo"/>}
         </>
     );
 }

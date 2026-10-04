@@ -198,6 +198,15 @@ const screenSchema = new Schema({
         required: true,
         default: "offline"
     },
+    deviceTokenHash: {
+        type: String,
+        default: null,
+        select: false
+    },
+    deviceTokenIssuedAt: {
+        type: Date,
+        default: null
+    },
     creation: {
         type: Date,
         default: Date.now()
