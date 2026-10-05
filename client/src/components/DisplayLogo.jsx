@@ -62,9 +62,7 @@ export default function DisplayLogo({logo, isDarkModeActive}) {
         };
     }, [logo, isDarkModeActive]);
 
-    return (
-        <>
-            {cachedLogo && logo && <img src={cachedLogo} className={'card logo'} alt="Logo"/>}
-        </>
-    );
+    if (!cachedLogo || !logo) return null;
+
+    return <img src={cachedLogo} className="display-logo" alt="Logo"/>;
 }

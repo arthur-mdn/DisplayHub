@@ -11,6 +11,7 @@ import {FaArrowRotateLeft, FaKeyboard, FaMobileScreenButton, FaRightToBracket} f
 import Pub from "./components/Pub.jsx";
 import {deleteDatabases} from "./utils/cacheUtils";
 import DisplayImage from "./components/DisplayImage.jsx";
+import TextTicker from "./components/TextTicker.jsx";
 
 function App() {
     const [code, setCode] = useState('');
@@ -24,6 +25,11 @@ function App() {
     const [showIdentify, setShowIdentify] = useState(false);
     const identifyTimerRef = useRef(null);
     const [socketId, setSocketId] = useState(null);
+
+    useEffect(() => {
+        document.body.classList.toggle('dark-mode', Boolean(isDarkModeActive));
+        return () => document.body.classList.remove('dark-mode');
+    }, [isDarkModeActive]);
 
     useEffect(() => {
         let savedConfig = localStorage.getItem('screenConfig');
@@ -475,38 +481,16 @@ function App() {
     }
 
     return (<div className={`App`}>
-        {(configData && isDarkModeActive) && <style>
-            {`
-                body, html, #root{
-                  color: white;
-                  background-color: rgb(32, 35, 37);
-                }
-                .card{
-                  color: white;
-                  background-color: rgb(24, 26, 27);
-                }
-                img[alt="Flèche"]{
-                  filter: invert(1);
-                }
-              `}
-        </style>}
         {renderContent()}
 
-        {(configData && textSlide) && (<div className="messagedefilant" style={{
-            backgroundColor: textSlide.backgroundColor,
-            color: textSlide.textColor
-        }}>
-            <div>
-                {textSlide.text + " " + textSlide.text} {/* Duplication du texte */}
-            </div>
-            <style>
-                {`
-                .messagedefilant div {
-                  animation: scrollText ${textSlide.slideTime / 2}s linear infinite;
-                }
-              `}
-            </style>
-        </div>)}
+        {(configData && textSlide) && (
+            <TextTicker
+                text={textSlide.text}
+                backgroundColor={textSlide.backgroundColor}
+                textColor={textSlide.textColor}
+                slideTime={textSlide.slideTime}
+            />
+        )}
 
     </div>);
 }

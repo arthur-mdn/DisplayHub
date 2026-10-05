@@ -8,8 +8,8 @@ import {cacheImages, getCachedImage} from '../utils/cacheUtils.js';
 const Slider = SlickSlider.default || SlickSlider;
 
 function PhotoSlider({photos, interval, hideDots, screen}) {
-    const [currentIndex, setCurrentIndex] = useState(0);
     const [cachedPhotos, setCachedPhotos] = useState([]);
+    const hasDirections = screen.directions?.length > 0;
 
     useEffect(() => {
         const objectUrls = [];
@@ -53,17 +53,19 @@ function PhotoSlider({photos, interval, hideDots, screen}) {
         slidesToShow: 1,
         slidesToScroll: 1,
         autoplay: true,
-        autoplaySpeed: interval * 1000,
-        beforeChange: (current, next) => setCurrentIndex(next),
+        autoplaySpeed: (interval || 10) * 1000
     };
 
     return (
-        <div style={{width: screen.directions.length > 0 ? '60%' : '100%'}} className={'photos-full-container'}>
+        <div
+            className="display-gallery"
+            data-has-directions={hasDirections ? "true" : "false"}
+            data-hide-dots={hideDots ? "true" : "false"}
+        >
             <Slider {...settings}>
                 {cachedPhotos.map((photo, index) => (
-                    <div key={index} style={{width: '100%', height: '100%'}}>
-                        <img src={photo} alt={`Slide ${index}`}
-                             style={{width: '100%', height: '100%', objectFit: 'cover'}}/>
+                    <div key={index} className="display-gallery__slide">
+                        <img src={photo} alt={`Slide ${index}`} className="display-gallery__img"/>
                     </div>
                 ))}
             </Slider>

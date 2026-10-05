@@ -68,53 +68,74 @@ function DisplayIcons({icons, isDarkModeActive}) {
     }, [icons, isDarkModeActive]);
 
     const updateWidth = () => {
-        if (iconsRef.current && containerRef.current) {
-            const contentWidth = iconsRef.current.scrollWidth;
-            const containerWidth = containerRef.current.clientWidth;
-            const calculatedHiddenWidth = (contentWidth - containerWidth) + 20;
-            if (calculatedHiddenWidth > 0) {
-                setHiddenContentWidth(calculatedHiddenWidth);
-                setShouldScroll(true);
-            } else {
-                setShouldScroll(false);
-            }
+        if (!iconsRef.current || !containerRef.current) return;
+
+        const contentWidth = iconsRef.current.scrollWidth;
+        const containerWidth = containerRef.current.clientWidth;
+        const overflow = contentWidth - containerWidth;
+
+        if (overflow > 2) {
+            setHiddenContentWidth(overflow);
+            setShouldScroll(true);
+        } else {
+            setHiddenContentWidth(0);
+            setShouldScroll(false);
         }
     };
 
     useLayoutEffect(() => {
-        const timer = setTimeout(updateWidth, 1000);
-        return () => clearTimeout(timer);
-    }, [cachedIcons]);
+        updateWidth();
+        const timer = setTimeout(updateWidth, 50);
+        const timer2 = setTimeout(updateWidth, 300);
 
-    useLayoutEffect(() => {
+        const observer = typeof ResizeObserver !== 'undefined'
+            ? new ResizeObserver(() => updateWidth())
+            : null;
+        if (observer && containerRef.current) {
+            observer.observe(containerRef.current);
+        }
+        if (observer && iconsRef.current) {
+            observer.observe(iconsRef.current);
+        }
+
         window.addEventListener('resize', updateWidth);
         return () => {
+            clearTimeout(timer);
+            clearTimeout(timer2);
+            observer?.disconnect();
             window.removeEventListener('resize', updateWidth);
         };
-    }, []);
+    }, [cachedIcons]);
 
     const animationStyle = shouldScroll ? {
         animation: `scroll-icons 20s linear infinite`,
-        animationName: `scroll-${hiddenContentWidth}`,
-    } : {};
+        animationName: `scroll-icons-${Math.round(hiddenContentWidth)}`,
+    } : undefined;
 
     return (
-        <div ref={containerRef} className={'icons-full-container card ai-fs jc-sb fc '}
-             style={{flexDirection: 'row', maxWidth: '40%', overflow: 'hidden', position: 'relative'}}>
-            {
-                shouldScroll &&
+        <div
+            ref={containerRef}
+            className="display-icons"
+            data-scrolling={shouldScroll ? 'true' : 'false'}
+            style={{'--icon-count': icons?.length || 0}}
+        >
+            {shouldScroll && (
                 <style>
-                    {`@keyframes scroll-${hiddenContentWidth} {
+                    {`@keyframes scroll-icons-${Math.round(hiddenContentWidth)} {
                     10%, 90% { transform: translateX(0); }
                     40%, 60% { transform: translateX(${-hiddenContentWidth}px); }
                 }`}
                 </style>
-            }
-            <div className={'icons-container fr'} ref={iconsRef}
-                 style={{...animationStyle, gap: '0.5vw', top: 0, justifyContent: 'space-around'}}>
+            )}
+            <div className="display-icons__track" ref={iconsRef} style={animationStyle}>
                 {cachedIcons.map((icon) => (
-                    <img key={icon} src={`${icon}`} alt={`Icon`}
-                         style={{width: '4vw', height: '4vw', objectFit: 'contain'}}/>
+                    <img
+                        key={icon}
+                        src={icon}
+                        alt="Icon"
+                        className="display-icons__item"
+                        onLoad={updateWidth}
+                    />
                 ))}
             </div>
         </div>
