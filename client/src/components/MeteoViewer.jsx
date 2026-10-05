@@ -8,17 +8,24 @@ function MeteoViewer({screen}) {
     const iconSrc = icon === '01n'
         ? '/elements/meteo/01n-edited.png'
         : `https://openweathermap.org/img/wn/${icon}@2x.png`;
+    const temp = `${screen.meteo.data.main.temp.toFixed(1)}°`;
+    const description = weather?.description;
 
     return (
         <div className="display-meteo">
             {weather && (
                 <img src={iconSrc} alt="" className="display-meteo__icon"/>
             )}
-            <p className="display-meteo__temp">{screen.meteo.data.main.temp.toFixed(1)}°</p>
             <div className="display-meteo__meta">
-                {weather?.description && (
-                    <p className="display-meteo__desc">{weather.description}</p>
-                )}
+                <p className="display-meteo__title">
+                    <span className="display-meteo__temp">{temp}</span>
+                    {description && (
+                        <>
+                            <span className="display-meteo__sep" aria-hidden="true">.</span>
+                            <span className="display-meteo__desc">{description}</span>
+                        </>
+                    )}
+                </p>
                 <p className="display-meteo__city">
                     <svg className="display-meteo__pin" viewBox="0 0 24 24" aria-hidden="true">
                         <path

@@ -1247,23 +1247,15 @@ body, html, #root {
 .display-meteo {
     display: flex;
     align-items: center;
-    gap: 0.55vw;
+    gap: 0.45vw;
 }
 
 .display-meteo__icon {
-    width: clamp(2.1rem, 3.6vw, 3.1rem);
-    height: clamp(2.1rem, 3.6vw, 3.1rem);
+    width: clamp(3.4rem, 6.2vw, 5.2rem);
+    height: clamp(3.4rem, 6.2vw, 5.2rem);
     object-fit: contain;
     flex-shrink: 0;
     opacity: 0.95;
-}
-
-.display-meteo__temp {
-    font-size: clamp(1.25rem, 2.35vw, 2.1rem);
-    font-weight: 700;
-    color: var(--dh-text);
-    line-height: 1;
-    white-space: nowrap;
 }
 
 .display-meteo__meta {
@@ -1274,12 +1266,35 @@ body, html, #root {
     min-width: 0;
 }
 
+.display-meteo__title {
+    display: flex;
+    align-items: center;
+    gap: 0.55em;
+    white-space: nowrap;
+    line-height: 1.1;
+}
+
+.display-meteo__temp {
+    font-size: clamp(0.9rem, 1.35vw, 1.2rem);
+    font-weight: 700;
+    color: var(--dh-text);
+}
+
+.display-meteo__sep {
+    display: block;
+    width: 0.2rem;
+    height: 0.2rem;
+    border-radius: 50%;
+    background: var(--dh-muted);
+    opacity: 0.85;
+    flex-shrink: 0;
+}
+
 .display-meteo__desc {
     font-size: clamp(0.78rem, 1.15vw, 1.05rem);
     font-weight: 600;
     color: var(--dh-text);
     text-transform: capitalize;
-    white-space: nowrap;
 }
 
 .display-meteo__city {
@@ -1341,6 +1356,21 @@ body, html, #root {
     min-width: 0;
     overflow: hidden;
     position: relative;
+}
+
+.display-icons[data-scrolling="true"]::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: clamp(1.2rem, 2.2vw, 2.4rem);
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(
+        90deg,
+        var(--dh-surface) 0%,
+        color-mix(in srgb, var(--dh-surface) 65%, transparent) 45%,
+        transparent 100%
+    );
 }
 
 .display-icons__track {
