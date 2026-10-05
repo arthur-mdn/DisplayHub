@@ -124,13 +124,34 @@ const disconnectAdminSocketsForUser = (adminId) => {
     }
 };
 
-const getSocketId = (lookingForThisScreenId) => {
+const getSocketId = (lookingForThisScreenId, {includeDebug = false} = {}) => {
     const id = lookingForThisScreenId?.toString?.() || lookingForThisScreenId;
     for (const socketId in socketMap) {
-        if (socketMap[socketId].debugOnly) continue;
-        if (socketMap[socketId].screenId === id) {
+        const entry = socketMap[socketId];
+        if (entry.debugOnly) {
+            if (includeDebug && entry.debugScreen?._id?.toString?.() === id) {
+                return socketId;
+            }
+            continue;
+        }
+        if (entry.screenId === id) {
             return socketId;
         }
+    }
+    return null;
+};
+
+const resolveLiveSocketId = (target) => {
+    if (!target) return null;
+    if (typeof target === 'string') {
+        if (socketMap[target]) return target;
+        return getSocketId(target, {includeDebug: true});
+    }
+    if (target.socketId && socketMap[target.socketId]) {
+        return target.socketId;
+    }
+    if (target.screenId) {
+        return getSocketId(target.screenId, {includeDebug: true});
     }
     return null;
 };
@@ -193,7 +214,13 @@ async function getSocketDetails(socketId, {includeAssociationCode = true} = {}) 
     const [screenId, debugScreen] = getScreenId(socketId);
 
     if (socketMap[socketId].debugOnly || debugScreen) {
-        return {socketId, debugScreen: sanitizeScreen(debugScreen), added: socketMap[socketId].added, debugOnly: true};
+        return {
+            socketId,
+            screenId: debugScreen?._id?.toString?.() || null,
+            debugScreen: sanitizeScreen(debugScreen),
+            added: socketMap[socketId].added,
+            debugOnly: true
+        };
     }
     if (socketMap[socketId].associationCode) {
         const details = {socketId, added: socketMap[socketId].added, waiting: true};
@@ -206,9 +233,45 @@ async function getSocketDetails(socketId, {includeAssociationCode = true} = {}) 
         const screen = await Screen.findById(screenId)
             .populate('users.user', 'email firstName lastName')
             .select('-deviceTokenHash');
-        return {socketId, screen: sanitizeScreen(screen), added: socketMap[socketId].added};
+        return {
+            socketId,
+            screenId: screenId?.toString?.() || screenId,
+            screen: sanitizeScreen(screen),
+            added: socketMap[socketId].added
+        };
     } catch (error) {
-        return {socketId, screen: {name: 'Écran inconnu', status: 'offline'}, added: socketMap[socketId].added};
+        return {
+            socketId,
+            screenId: screenId?.toString?.() || screenId,
+            screen: {name: 'Écran inconnu', status: 'offline'},
+            added: socketMap[socketId].added
+        };
+    }
+}
+
+async function getSocketDetailsByScreenId(screenId, {includeAssociationCode = true} = {}) {
+    const id = screenId?.toString?.() || screenId;
+    const liveSocketId = getSocketId(id, {includeDebug: true});
+    if (liveSocketId) {
+        return getSocketDetails(liveSocketId, {includeAssociationCode});
+    }
+
+    try {
+        const screen = await Screen.findById(id)
+            .populate('users.user', 'email firstName lastName')
+            .select('-deviceTokenHash');
+        if (!screen) {
+            return false;
+        }
+        return {
+            socketId: null,
+            screenId: id,
+            screen: sanitizeScreen(screen),
+            added: null,
+            disconnected: true
+        };
+    } catch (error) {
+        return false;
     }
 }
 
@@ -303,6 +366,7 @@ module.exports = {
     removeSocketId,
     getScreenId,
     getSocketId,
+    resolveLiveSocketId,
     hasOtherSocketForScreen,
     clearScreenSocketBindings,
     disconnectScreenSockets,
@@ -310,6 +374,7 @@ module.exports = {
     getScreenSocketMap,
     getSocketList,
     getSocketDetails,
+    getSocketDetailsByScreenId,
     getSocketIdWithThisAssociationCode,
     associateAdminSocket,
     getAdminSocketId,

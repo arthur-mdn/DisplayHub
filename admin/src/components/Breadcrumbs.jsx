@@ -9,7 +9,7 @@ const Breadcrumbs = () => {
     const breadcrumbRef = useRef(null);
 
     const pathnames = location.pathname.split('/').filter((x) => x);
-    const knownPaths = ['screens', 'list', 'add', 'edit', 'delete', 'programmes', 'profil', 'login', 'register', 'logout', 'admin', 'debug', 'socketControl', 'name', 'logo', 'icons', 'meteo', 'directions', 'photos', 'dark_mode', 'text_slides', 'allowed_users', 'control', 'avanced_settings'];
+    const knownPaths = ['screens', 'list', 'add', 'edit', 'delete', 'programmes', 'profil', 'login', 'register', 'logout', 'admin', 'debug', 'socketControl', 'screen', 'socket', 'name', 'logo', 'icons', 'meteo', 'directions', 'photos', 'dark_mode', 'text_slides', 'allowed_users', 'control', 'avanced_settings'];
 
     const isObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
     const isSocketId = (id) => /^[0-9a-zA-Z-_]{20}$/.test(id);

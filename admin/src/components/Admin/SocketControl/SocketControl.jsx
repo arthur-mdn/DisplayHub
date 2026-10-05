@@ -11,6 +11,8 @@ function SocketControl () {
             <Breadcrumbs/>
             <div className={"p1"}>
                 <Routes>
+                    <Route path="/screen/:screenId" element={<SocketDetail/>}/>
+                    <Route path="/socket/:socketId" element={<SocketDetail/>}/>
                     <Route path="/:socketId" element={<SocketDetail/>}/>
                     <Route path="/" element={<SocketList/>}/>
                 </Routes>
