@@ -10,13 +10,13 @@ services:
       MONGO_INITDB_DATABASE: DisplayHub
     volumes:
       - DisplayHub_mongodb_data:/data/db
-      - ./mongo/mongod.conf:/etc/mongo/mongod.conf:ro
+      - ./mongo/mongod.prod.conf:/etc/mongo/mongod.conf:ro
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "-u", "${MONGO_ROOT_USER}", "-p", "${MONGO_ROOT_PASSWORD}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 40s
 
   DisplayHub-server:
     container_name: displayhub-server

@@ -1,0 +1,21 @@
+# Temporary override: start Mongo WITHOUT auth on an existing volume
+# so bootstrap-existing-mongo-auth.sh can create the root user.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml up -d DisplayHub-mongodb
+#   ./scripts/bootstrap-existing-mongo-auth.sh
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml down
+#   docker compose -f docker-compose.prod.yml up -d
+
+services:
+  DisplayHub-mongodb:
+    command: ["mongod", "--bind_ip_all"]
+    environment: {}
+    volumes:
+      - DisplayHub_mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
