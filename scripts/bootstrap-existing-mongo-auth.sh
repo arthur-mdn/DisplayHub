@@ -4,10 +4,11 @@
 # with docker-compose.prod.yml.
 #
 # Usage:
-#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml up -d DisplayHub-mongodb
+#   docker compose -f docker-compose.prod.yml down
+#   docker compose -f docker-compose.prod.mongo-bootstrap.yml up -d
 #   set -a && source .env && set +a
 #   ./scripts/bootstrap-existing-mongo-auth.sh
-#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml down
+#   docker compose -f docker-compose.prod.mongo-bootstrap.yml down
 #   docker compose -f docker-compose.prod.yml up -d
 
 set -euo pipefail
@@ -32,8 +33,9 @@ done
 
 if ! docker exec "$CONTAINER" mongosh --quiet --eval 'db.adminCommand("ping").ok' >/dev/null 2>&1; then
   echo "Mongo is not reachable without credentials inside $CONTAINER." >&2
-  echo "Start it with the bootstrap override (auth OFF):" >&2
-  echo "  docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml up -d DisplayHub-mongodb" >&2
+  echo "Start it with the bootstrap compose alone (auth OFF):" >&2
+  echo "  docker compose -f docker-compose.prod.yml down" >&2
+  echo "  docker compose -f docker-compose.prod.mongo-bootstrap.yml up -d" >&2
   exit 1
 fi
 
@@ -76,7 +78,10 @@ echo "$RESULT"
 
 if [[ "$RESULT" == *"ERROR_AUTH_REQUIRED"* ]]; then
   echo "Mongo requires authentication. Restart WITHOUT auth first:" >&2
-  echo "  docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml up -d DisplayHub-mongodb" >&2
+  echo "  docker compose -f docker-compose.prod.yml down" >&2
+  echo "  docker compose -f docker-compose.prod.mongo-bootstrap.yml up -d" >&2
+  echo "Check Cmd is [mongod --bind_ip_all]:" >&2
+  echo "  docker inspect displayhub-mongodb --format '{{.Config.Cmd}}'" >&2
   exit 1
 fi
 
@@ -89,5 +94,5 @@ docker exec -i "$CONTAINER" mongosh --quiet \
 
 echo "Done. Root user is ready."
 echo "Next:"
-echo "  docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml down"
+echo "  docker compose -f docker-compose.prod.mongo-bootstrap.yml down"
 echo "  docker compose -f docker-compose.prod.yml up -d"
