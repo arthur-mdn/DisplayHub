@@ -172,6 +172,18 @@ router.post('/screens/update', verifyToken, ensureScreenMember, upload.fields([
                     return res.status(403).send({error: 'Permission refusée'});
                 }
                 screen = await updateWeatherData(screenId, value);
+            } else if (attribute === "config.meteo_corner") {
+                if (!await hasPermission(userId, screenId, "meteo")) {
+                    return res.status(403).send({error: 'Permission refusée'});
+                }
+                const allowedCorners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+                if (!allowedCorners.includes(value)) {
+                    return res.status(400).send({error: 'Coin météo invalide'});
+                }
+                if (!screen.config) {
+                    screen.config = {};
+                }
+                screen.config.meteo_corner = value;
             } else if (attribute === 'dark_mode') {
                 if (!await hasPermission(userId, screenId, "dark_mode")) {
                     return res.status(403).send({error: 'Permission refusée'});

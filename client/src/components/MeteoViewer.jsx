@@ -17,15 +17,10 @@ function MeteoViewer({screen}) {
                 <img src={iconSrc} alt="" className="display-meteo__icon"/>
             )}
             <div className="display-meteo__meta">
-                <p className="display-meteo__title">
-                    <span className="display-meteo__temp">{temp}</span>
-                    {description && (
-                        <>
-                            <span className="display-meteo__sep" aria-hidden="true">.</span>
-                            <span className="display-meteo__desc">{description}</span>
-                        </>
-                    )}
-                </p>
+                <p className="display-meteo__temp">{temp}</p>
+                {description && (
+                    <p className="display-meteo__desc">{description}</p>
+                )}
                 <p className="display-meteo__city">
                     <svg className="display-meteo__pin" viewBox="0 0 24 24" aria-hidden="true">
                         <path

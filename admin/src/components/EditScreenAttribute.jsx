@@ -9,10 +9,22 @@ import {FaTimes} from "react-icons/fa";
 import MeteoViewer from "./MeteoViewer.jsx";
 import DisplayImage from "./DisplayImage.jsx";
 
+const METEO_CORNERS = [
+    {value: 'top-left', label: 'Haut gauche'},
+    {value: 'top-right', label: 'Haut droite'},
+    {value: 'bottom-left', label: 'Bas gauche'},
+    {value: 'bottom-right', label: 'Bas droite'},
+];
+
 function EditScreenAttribute({ screen, screenId, attribute, value, onSave, inputType = "text" }) {
     const [isLoading, setIsLoading] = useState(false);
     const [inputValue, setInputValue] = useState(value);
     const [suggestions, setSuggestions] = useState([]);
+    const [meteoCorner, setMeteoCorner] = useState(screen?.config?.meteo_corner || 'top-left');
+
+    useEffect(() => {
+        setMeteoCorner(screen?.config?.meteo_corner || 'top-left');
+    }, [screen?.config?.meteo_corner]);
 
     const infosAboutAttribute = {
         "name": {
@@ -68,6 +80,27 @@ function EditScreenAttribute({ screen, screenId, attribute, value, onSave, input
         } catch (error) {
             console.error('Erreur lors de la modification :', error);
             toast.error("Erreur lors de la suppression de la ville");
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    const updateMeteoCorner = async (corner) => {
+        setMeteoCorner(corner);
+        setIsLoading(true);
+        try {
+            const response = await axios.post(`${config.serverUrl}/screens/update`, {
+                attribute: 'config.meteo_corner',
+                value: corner
+            }, {
+                withCredentials: true
+            });
+            onSave(response.data.screenObj);
+            toast.success("Position météo mise à jour !");
+        } catch (error) {
+            console.error('Erreur lors de la modification :', error);
+            toast.error("Erreur lors de la mise à jour de la position");
+            setMeteoCorner(screen?.config?.meteo_corner || 'top-left');
         } finally {
             setIsLoading(false);
         }
@@ -191,7 +224,20 @@ function EditScreenAttribute({ screen, screenId, attribute, value, onSave, input
                         </div>
                     )}
                 </div>
-
+                <div className={"fc g0-5"}>
+                    <label htmlFor="meteo-corner">Position sur le slider photo</label>
+                    <select
+                        id="meteo-corner"
+                        value={meteoCorner}
+                        onChange={(e) => updateMeteoCorner(e.target.value)}
+                    >
+                        {METEO_CORNERS.map((corner) => (
+                            <option key={corner.value} value={corner.value}>
+                                {corner.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
             </div>
         );
     }

@@ -1,5 +1,4 @@
 import React from "react";
-import MeteoViewer from "./MeteoViewer";
 import TimeViewer from "./TimeViewer";
 import DirectionsViewer from "./DirectionsViewer";
 import PhotoSlider from "./PhotoSlider.jsx";
@@ -10,7 +9,6 @@ import DisplayIcons from "./DisplayIcons.jsx";
 function Screen({configData, isDarkModeActive}) {
     const hasDirections = configData.directions?.length > 0;
     const hasPhotos = configData.photos?.length > 0;
-    const hasMeteo = Boolean(configData.meteo);
     const hasIcons = configData.icons?.length > 0;
 
     return (
@@ -30,12 +28,6 @@ function Screen({configData, isDarkModeActive}) {
                 </div>
 
                 <div className="display-header__center">
-                    {hasMeteo && (
-                        <>
-                            <MeteoViewer screen={configData}/>
-                            <div className="display-header__sep" aria-hidden="true"/>
-                        </>
-                    )}
                     <TimeViewer/>
                 </div>
 

@@ -11,6 +11,19 @@ function ConfigManager({ screen, initialConfig, onConfigChange, onRemoveScreenSe
     const configToText = {
         "photos_interval": "Intervalle de changement des photos",
         "hide_slider_dots": "Masquer les points de navigation du slider",
+        "meteo_corner": "Position du widget météo sur le slider",
+    }
+    const meteoCornerLabels = {
+        "top-left": "Haut gauche",
+        "top-right": "Haut droite",
+        "bottom-left": "Bas gauche",
+        "bottom-right": "Bas droite",
+    }
+    const displayConfig = {
+        photos_interval: 10,
+        hide_slider_dots: false,
+        meteo_corner: "top-left",
+        ...currentConfig,
     }
 
     const handleInputChange = (key, value) => {
@@ -41,8 +54,8 @@ function ConfigManager({ screen, initialConfig, onConfigChange, onRemoveScreenSe
     return (
         <div className={"p1"}>
             <div className={"fc g0-5"}>
-                {Object.keys(currentConfig).map((key) => {
-                    const value = currentConfig[key];
+                {Object.keys(displayConfig).map((key) => {
+                    const value = displayConfig[key];
 
                     if (key === 'photos_interval') {
                         return (
@@ -59,6 +72,25 @@ function ConfigManager({ screen, initialConfig, onConfigChange, onRemoveScreenSe
                                     onTouchEnd={(e) => handleInputChange(key, parseInt(e.target.value))}
                                 />
                                 <span>{value}</span>
+                            </div>
+                        );
+                    }
+
+                    if (key === 'meteo_corner') {
+                        return (
+                            <div key={key} className="fc g0-5">
+                                <label htmlFor={key}>{configToText[key]}</label>
+                                <select
+                                    id={key}
+                                    value={value}
+                                    onChange={(e) => handleInputChange(key, e.target.value)}
+                                >
+                                    {Object.entries(meteoCornerLabels).map(([cornerValue, label]) => (
+                                        <option key={cornerValue} value={cornerValue}>
+                                            {label}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                         );
                     }

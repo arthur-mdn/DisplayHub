@@ -4,12 +4,19 @@ import 'slick-carousel/slick/slick.css';
 import 'slick-carousel/slick/slick-theme.css';
 import config from '../config.js';
 import {cacheImages, getCachedImage} from '../utils/cacheUtils.js';
+import MeteoViewer from './MeteoViewer.jsx';
 
 const Slider = SlickSlider.default || SlickSlider;
+
+const VALID_CORNERS = new Set(['top-left', 'top-right', 'bottom-left', 'bottom-right']);
 
 function PhotoSlider({photos, interval, hideDots, screen}) {
     const [cachedPhotos, setCachedPhotos] = useState([]);
     const hasDirections = screen.directions?.length > 0;
+    const hasMeteo = Boolean(screen.meteo && Object.keys(screen.meteo.data || {}).length > 0);
+    const meteoCorner = VALID_CORNERS.has(screen.config?.meteo_corner)
+        ? screen.config.meteo_corner
+        : 'top-left';
 
     useEffect(() => {
         const objectUrls = [];
@@ -69,6 +76,11 @@ function PhotoSlider({photos, interval, hideDots, screen}) {
                     </div>
                 ))}
             </Slider>
+            {hasMeteo && (
+                <div className="display-meteo-card" data-corner={meteoCorner}>
+                    <MeteoViewer screen={screen}/>
+                </div>
+            )}
         </div>
     );
 }

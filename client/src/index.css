@@ -1251,8 +1251,8 @@ body, html, #root {
 }
 
 .display-meteo__icon {
-    width: clamp(3.4rem, 6.2vw, 5.2rem);
-    height: clamp(3.4rem, 6.2vw, 5.2rem);
+    width: clamp(3.8rem, 7vw, 5.8rem);
+    height: clamp(3.8rem, 7vw, 5.8rem);
     object-fit: contain;
     flex-shrink: 0;
     opacity: 0.95;
@@ -1261,33 +1261,17 @@ body, html, #root {
 .display-meteo__meta {
     display: flex;
     flex-direction: column;
-    gap: 0.12vw;
+    gap: 0.08vw;
     line-height: 1.15;
     min-width: 0;
 }
 
-.display-meteo__title {
-    display: flex;
-    align-items: center;
-    gap: 0.55em;
-    white-space: nowrap;
-    line-height: 1.1;
-}
-
 .display-meteo__temp {
-    font-size: clamp(0.9rem, 1.35vw, 1.2rem);
+    font-size: clamp(0.95rem, 1.45vw, 1.3rem);
     font-weight: 700;
     color: var(--dh-text);
-}
-
-.display-meteo__sep {
-    display: block;
-    width: 0.2rem;
-    height: 0.2rem;
-    border-radius: 50%;
-    background: var(--dh-muted);
-    opacity: 0.85;
-    flex-shrink: 0;
+    line-height: 1.1;
+    white-space: nowrap;
 }
 
 .display-meteo__desc {
@@ -1295,6 +1279,8 @@ body, html, #root {
     font-weight: 600;
     color: var(--dh-text);
     text-transform: capitalize;
+    white-space: nowrap;
+    line-height: 1.15;
 }
 
 .display-meteo__city {
@@ -1323,8 +1309,9 @@ body, html, #root {
 .display-time__date {
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 0.05vw;
-    text-align: left;
+    text-align: center;
 }
 
 .display-time__weekday {
@@ -1501,6 +1488,64 @@ body, html, #root {
     border-radius: var(--dh-radius);
     box-shadow: var(--dh-shadow);
     background: var(--dh-surface);
+}
+
+.display-meteo-card {
+    position: absolute;
+    z-index: 4;
+    max-width: min(42%, 28rem);
+    padding: 0.55vw 0.85vw;
+    border-radius: calc(var(--dh-radius) * 0.85);
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0.35vw 1.2vw rgba(17, 24, 39, 0.16);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    pointer-events: none;
+}
+
+.display-meteo-card[data-corner="top-left"] {
+    top: 1vw;
+    left: 1vw;
+}
+
+.display-meteo-card[data-corner="top-right"] {
+    top: 1vw;
+    right: 1vw;
+}
+
+.display-meteo-card[data-corner="bottom-left"] {
+    bottom: 1vw;
+    left: 1vw;
+}
+
+.display-meteo-card[data-corner="bottom-right"] {
+    bottom: 1vw;
+    right: 1vw;
+}
+
+.display-meteo-card .display-meteo__temp,
+.display-meteo-card .display-meteo__desc {
+    color: #111827;
+}
+
+.display-meteo-card .display-meteo__city {
+    color: #4b5563;
+}
+
+body.dark-mode .display-meteo-card {
+    background: rgba(20, 22, 24, 0.72);
+    border-color: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 0.35vw 1.2vw rgba(0, 0, 0, 0.35);
+}
+
+body.dark-mode .display-meteo-card .display-meteo__temp,
+body.dark-mode .display-meteo-card .display-meteo__desc {
+    color: #f3f4f6;
+}
+
+body.dark-mode .display-meteo-card .display-meteo__city {
+    color: #9ca3af;
 }
 
 .display-gallery[data-has-directions="false"] {
