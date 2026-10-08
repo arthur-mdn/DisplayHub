@@ -292,7 +292,10 @@ export default function Home() {
                     <strong>DisplayHub</strong>
                     <span>Affichage dynamique en bêta</span>
                 </div>
-                <p>© {new Date().getFullYear()} DisplayHub</p>
+                <div className={styles.footerLinks}>
+                    <a href="/mentions-legales">Mentions légales</a>
+                    <span>© {new Date().getFullYear()} DisplayHub</span>
+                </div>
             </footer>
         </div>
     );

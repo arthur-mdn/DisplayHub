@@ -403,6 +403,16 @@
   font-size: 1rem;
 }
 
+.footerLinks {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.footerLinks a:hover {
+  color: var(--dh-ink);
+}
+
 @keyframes rise {
   from {
     opacity: 0;

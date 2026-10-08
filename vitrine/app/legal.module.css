@@ -1,0 +1,134 @@
+.page {
+  --page-inline: clamp(1.25rem, 4vw, 3rem);
+  --page-max: 72rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  width: 100%;
+  padding: 1rem max(var(--page-inline), calc((100% - var(--page-max)) / 2 + var(--page-inline)));
+  backdrop-filter: blur(14px);
+  background: rgba(247, 249, 252, 0.78);
+  border-bottom: 1px solid rgba(15, 27, 45, 0.06);
+}
+
+.brandLogo {
+  width: clamp(7.5rem, 18vw, 10.5rem);
+  height: auto;
+  object-fit: contain;
+}
+
+.navLink {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--dh-muted);
+}
+
+.navLink:hover {
+  color: var(--dh-ink);
+}
+
+.main {
+  width: min(100%, var(--page-max));
+  margin: 0 auto;
+  padding: clamp(2rem, 5vw, 3.5rem) var(--page-inline) clamp(3rem, 6vw, 5rem);
+  flex: 1 1 auto;
+}
+
+.title {
+  font-size: clamp(1.7rem, 3vw, 2.3rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 1.75rem;
+}
+
+.section {
+  margin-bottom: 2rem;
+}
+
+.section h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: var(--dh-ink);
+}
+
+.section p,
+.section li {
+  color: var(--dh-muted);
+  font-size: 0.98rem;
+  line-height: 1.55;
+  max-width: 42rem;
+}
+
+.section p + p {
+  margin-top: 0.65rem;
+}
+
+.section ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.section a {
+  color: var(--dh-blue-deep);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.section a:hover {
+  color: var(--dh-blue);
+}
+
+.footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 1.5rem max(var(--page-inline), calc((100% - var(--page-max)) / 2 + var(--page-inline))) 2rem;
+  border-top: 1px solid var(--dh-line);
+  color: var(--dh-muted);
+  font-size: 0.9rem;
+}
+
+.footerBrand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.footerBrand strong {
+  color: var(--dh-ink);
+  font-size: 1rem;
+}
+
+.footerLinks {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.footerLinks a:hover {
+  color: var(--dh-ink);
+}
+
+@media (max-width: 700px) {
+  .footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
