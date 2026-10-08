@@ -1,6 +1,9 @@
 .idea/
-/**/.DS_Store
 .DS_Store
+**/.DS_Store
 .env
-/**/node_modules/
-docs
+**/node_modules/
+**/dist/
+docs/AUDIT_*.md
+**/* 2.json
+**/* 2.*
