@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 # Run ONCE against an existing Mongo volume while authorization is OFF
-# (or while the localhost exception still applies), then enable auth in
-# mongo/mongod.prod.conf and restart with docker-compose.prod.yml.
+# (docker-compose.prod.mongo-bootstrap.yml), then enable auth and restart
+# with docker-compose.prod.yml.
 #
-# Usage (from repo root, mongo running without auth):
-#   set -a && source .env && set +a
-#   ./scripts/bootstrap-existing-mongo-auth.sh
-#
-# Or with an explicit bootstrap compose override:
+# Usage:
 #   docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml up -d DisplayHub-mongodb
 #   set -a && source .env && set +a
 #   ./scripts/bootstrap-existing-mongo-auth.sh
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml down
+#   docker compose -f docker-compose.prod.yml up -d
 
 set -euo pipefail
 
@@ -33,12 +31,14 @@ for _ in $(seq 1 30); do
 done
 
 if ! docker exec "$CONTAINER" mongosh --quiet --eval 'db.adminCommand("ping").ok' >/dev/null 2>&1; then
-  echo "Mongo is not reachable inside $CONTAINER" >&2
+  echo "Mongo is not reachable without credentials inside $CONTAINER." >&2
+  echo "Start it with the bootstrap override (auth OFF):" >&2
+  echo "  docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml up -d DisplayHub-mongodb" >&2
   exit 1
 fi
 
-echo "Creating root user on admin (no-op if already present)..."
-ROOT_OUT="$(
+echo "Ensuring root user matches MONGO_ROOT_USER / MONGO_ROOT_PASSWORD..."
+RESULT="$(
   docker exec -i \
     -e BOOTSTRAP_USER="$ROOT_USER" \
     -e BOOTSTRAP_PASSWORD="$ROOT_PASSWORD" \
@@ -49,24 +49,36 @@ if (!user || !pwd) {
   throw new Error("missing BOOTSTRAP_USER or BOOTSTRAP_PASSWORD");
 }
 const admin = db.getSiblingDB("admin");
-try {
-  admin.createUser({
-    user,
-    pwd,
-    roles: [{ role: "root", db: "admin" }],
-  });
-  print("root created");
-} catch (e) {
-  const msg = String(e.message || e);
-  if (msg.includes("already exists")) {
-    print("root already exists");
-  } else {
-    throw e;
+const existing = admin.getUser(user);
+if (existing) {
+  admin.changeUserPassword(user, pwd);
+  print("root password updated");
+} else {
+  try {
+    admin.createUser({
+      user,
+      pwd,
+      roles: [{ role: "root", db: "admin" }],
+    });
+    print("root created");
+  } catch (e) {
+    const msg = String(e.message || e);
+    if (msg.includes("requires authentication")) {
+      print("ERROR_AUTH_REQUIRED");
+    } else {
+      throw e;
+    }
   }
 }
 '
 )"
-echo "$ROOT_OUT"
+echo "$RESULT"
+
+if [[ "$RESULT" == *"ERROR_AUTH_REQUIRED"* ]]; then
+  echo "Mongo requires authentication. Restart WITHOUT auth first:" >&2
+  echo "  docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml up -d DisplayHub-mongodb" >&2
+  exit 1
+fi
 
 echo "Verifying credentials..."
 docker exec -i "$CONTAINER" mongosh --quiet \
@@ -75,8 +87,7 @@ docker exec -i "$CONTAINER" mongosh --quiet \
   --authenticationDatabase admin \
   --eval 'db.adminCommand("ping").ok' >/dev/null
 
-echo "Done."
+echo "Done. Root user is ready."
 echo "Next:"
-echo "  1. Confirm MONGO_ROOT_USER / MONGO_ROOT_PASSWORD in .env"
-echo "  2. Stop the bootstrap override if used"
-echo "  3. docker compose -f docker-compose.prod.yml up -d"
+echo "  docker compose -f docker-compose.prod.yml -f docker-compose.prod.mongo-bootstrap.yml down"
+echo "  docker compose -f docker-compose.prod.yml up -d"
