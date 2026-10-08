@@ -51,7 +51,7 @@ function AddScreen({ fromUrl = false }) {
     };
 
     const onScanSuccess = (decodedText, decodedResult) => {
-        const regexPattern = `${config.instanceUrl.replace(/\//g, "\\/")}\\/screens\\/add\\/([\\w-]+)`;
+        const regexPattern = `${config.adminUrl.replace(/\//g, "\\/")}\\/screens\\/add\\/([\\w-]+)`;
         const regex = new RegExp(regexPattern);
         const match = decodedText.match(regex);
         if (match && match[1]) {

@@ -173,6 +173,11 @@ const screenSchema = new Schema({
         photos_interval: {
             type: Number,
             default: 10
+        },
+        meteo_corner: {
+            type: String,
+            enum: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
+            default: 'top-left'
         }
     },
     dark_mode: {
@@ -197,6 +202,15 @@ const screenSchema = new Schema({
         enumerable: ["online", "offline"],
         required: true,
         default: "offline"
+    },
+    deviceTokenHash: {
+        type: String,
+        default: null,
+        select: false
+    },
+    deviceTokenIssuedAt: {
+        type: Date,
+        default: null
     },
     creation: {
         type: Date,

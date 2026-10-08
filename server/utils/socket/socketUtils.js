@@ -1,5 +1,7 @@
-// utils/socketUtils.js
-const Screen = require("../../models/Screen");
+const Screen = require('../../models/Screen');
+const User = require('../../models/User');
+const {sanitizeScreen} = require('../../others/sanitizeScreen');
+
 let io = null;
 const socketMap = {};
 const adminSocketMap = {};
@@ -11,9 +13,10 @@ const setIo = (newIo) => {
 const emitConfigUpdate = (screenId, updatedScreen) => {
     const socketId = getSocketId(screenId);
     if (socketId && io.sockets.sockets.get(socketId)) {
-        io.to(socketId).emit('config_updated', updatedScreen);
+        io.to(socketId).emit('config_updated', sanitizeScreen(updatedScreen));
     }
 };
+
 const emitScreenDeletion = (screenId) => {
     const socketId = getSocketId(screenId);
     if (socketId && io.sockets.sockets.get(socketId)) {
@@ -21,21 +24,61 @@ const emitScreenDeletion = (screenId) => {
     }
 };
 
+const clearScreenSocketBindings = (screenId, exceptSocketId = null) => {
+    const id = screenId?.toString?.() || screenId;
+    for (const socketId of Object.keys(socketMap)) {
+        if (exceptSocketId && socketId === exceptSocketId) continue;
+        if (socketMap[socketId].screenId?.toString?.() === id || socketMap[socketId].screenId === id) {
+            delete socketMap[socketId];
+        }
+    }
+};
+
+const disconnectScreenSockets = (screenId, {exceptSocketId = null, event = 'screen_deleted'} = {}) => {
+    if (!io) {
+        clearScreenSocketBindings(screenId, exceptSocketId);
+        return;
+    }
+    const id = screenId?.toString?.() || screenId;
+    for (const socketId of Object.keys(socketMap)) {
+        if (exceptSocketId && socketId === exceptSocketId) continue;
+        if (socketMap[socketId].debugOnly) continue;
+        if (socketMap[socketId].screenId?.toString?.() === id || socketMap[socketId].screenId === id) {
+            const screenSocket = io.sockets.sockets.get(socketId);
+            delete socketMap[socketId];
+            if (screenSocket) {
+                if (event) {
+                    screenSocket.emit(event);
+                }
+                screenSocket.disconnect(true);
+            }
+        }
+    }
+};
+
 const associateScreenSocket = (screenId, socketId) => {
-    socketMap[socketId] = {screenId, added: Date.now()};
+    clearScreenSocketBindings(screenId, socketId);
+    socketMap[socketId] = {screenId: screenId.toString(), added: Date.now()};
 };
 
 const associateSocketDebug = (socketId, debugScreen) => {
-    socketMap[socketId] = {screenId: debugScreen._id, debugScreen, added: Date.now()};
-}
+    socketMap[socketId] = {
+        debugOnly: true,
+        debugScreen: {
+            _id: debugScreen?._id,
+            name: debugScreen?.name || 'debug'
+        },
+        added: Date.now()
+    };
+};
 
 const associateSocketWaitingForConfiguration = (socketId, associationCode) => {
     socketMap[socketId] = {associationCode, added: Date.now()};
-}
+};
 
 const associateAdminSocket = (adminId, socketId) => {
-    adminSocketMap[socketId] = adminId;
-}
+    adminSocketMap[socketId] = adminId.toString();
+};
 
 const getAdminSocketId = (adminId) => {
     for (const socketId in adminSocketMap) {
@@ -44,58 +87,116 @@ const getAdminSocketId = (adminId) => {
         }
     }
     return null;
-}
+};
+
+const getAdminSocketIdsForUser = (adminId) => {
+    const ids = [];
+    for (const socketId in adminSocketMap) {
+        if (adminSocketMap[socketId] === adminId.toString()) {
+            ids.push(socketId);
+        }
+    }
+    return ids;
+};
 
 const getAdminId = (socketId) => {
     return adminSocketMap[socketId] ?? null;
-}
+};
 
 const removeAdminSocketId = (socketId) => {
     if (adminSocketMap[socketId]) {
         const adminId = adminSocketMap[socketId];
         delete adminSocketMap[socketId];
-        return adminId
+        return adminId;
     }
     return null;
-}
+};
 
-const getSocketId = (lookingForThisScreenId) => {
+const disconnectAdminSocketsForUser = (adminId) => {
+    if (!io) return;
+    for (const socketId of getAdminSocketIdsForUser(adminId)) {
+        const socket = io.sockets.sockets.get(socketId);
+        delete adminSocketMap[socketId];
+        if (socket) {
+            socket.emit('session_revoked');
+            socket.disconnect(true);
+        }
+    }
+};
+
+const getSocketId = (lookingForThisScreenId, {includeDebug = false} = {}) => {
+    const id = lookingForThisScreenId?.toString?.() || lookingForThisScreenId;
     for (const socketId in socketMap) {
-        if (socketMap[socketId].screenId === lookingForThisScreenId) {
+        const entry = socketMap[socketId];
+        if (entry.debugOnly) {
+            if (includeDebug && entry.debugScreen?._id?.toString?.() === id) {
+                return socketId;
+            }
+            continue;
+        }
+        if (entry.screenId === id) {
             return socketId;
         }
     }
     return null;
 };
 
+const resolveLiveSocketId = (target) => {
+    if (!target) return null;
+    if (typeof target === 'string') {
+        if (socketMap[target]) return target;
+        return getSocketId(target, {includeDebug: true});
+    }
+    if (target.socketId && socketMap[target.socketId]) {
+        return target.socketId;
+    }
+    if (target.screenId) {
+        return getSocketId(target.screenId, {includeDebug: true});
+    }
+    return null;
+};
+
+const hasOtherSocketForScreen = (screenId, exceptSocketId) => {
+    const id = screenId?.toString?.() || screenId;
+    for (const socketId in socketMap) {
+        if (socketId === exceptSocketId) continue;
+        if (socketMap[socketId].debugOnly) continue;
+        if (socketMap[socketId].screenId === id) {
+            return true;
+        }
+    }
+    return false;
+};
+
 const getScreenId = (lookingForThisSocketId) => {
     if (!socketMap[lookingForThisSocketId]) {
         return [null, null];
     }
-    const screenId = socketMap[lookingForThisSocketId].screenId ?? null;
-    const debugScreen = socketMap[lookingForThisSocketId].debugScreen ?? null;
+    const entry = socketMap[lookingForThisSocketId];
+    if (entry.debugOnly) {
+        return [null, entry.debugScreen ?? null];
+    }
+    const screenId = entry.screenId ?? null;
+    const debugScreen = entry.debugScreen ?? null;
     return [screenId, debugScreen];
 };
 
 const removeSocketId = (socketId) => {
     if (socketMap[socketId]) {
-        const [screenId, debugScreen] = getScreenId(socketId);
+        const [screenId] = getScreenId(socketId);
         delete socketMap[socketId];
-        return screenId
+        return screenId;
     }
     return null;
 };
 
 const getScreenSocketMap = () => {
     return socketMap;
-}
+};
 
 const isSocketConnected = (socketId) => {
-    if (socketMap[socketId]) {
-        return true;
-    }
-    return false;
-}
+    return Boolean(socketMap[socketId]);
+};
 
 const getSocketIdWithThisAssociationCode = (associationCode) => {
     for (const socketId in socketMap) {
@@ -104,45 +205,104 @@ const getSocketIdWithThisAssociationCode = (associationCode) => {
         }
     }
     return null;
+};
+
+async function getSocketDetails(socketId, {includeAssociationCode = true} = {}) {
+    if (!socketMap[socketId]) {
+        return false;
+    }
+    const [screenId, debugScreen] = getScreenId(socketId);
+
+    if (socketMap[socketId].debugOnly || debugScreen) {
+        return {
+            socketId,
+            screenId: debugScreen?._id?.toString?.() || null,
+            debugScreen: sanitizeScreen(debugScreen),
+            added: socketMap[socketId].added,
+            debugOnly: true
+        };
+    }
+    if (socketMap[socketId].associationCode) {
+        const details = {socketId, added: socketMap[socketId].added, waiting: true};
+        if (includeAssociationCode) {
+            details.associationCode = socketMap[socketId].associationCode;
+        }
+        return details;
+    }
+    try {
+        const screen = await Screen.findById(screenId)
+            .populate('users.user', 'email firstName lastName')
+            .select('-deviceTokenHash');
+        return {
+            socketId,
+            screenId: screenId?.toString?.() || screenId,
+            screen: sanitizeScreen(screen),
+            added: socketMap[socketId].added
+        };
+    } catch (error) {
+        return {
+            socketId,
+            screenId: screenId?.toString?.() || screenId,
+            screen: {name: 'Écran inconnu', status: 'offline'},
+            added: socketMap[socketId].added
+        };
+    }
 }
 
-async function getSocketList() {
-    let socketList = getScreenSocketMap();
-    const socketListArray = []
+async function getSocketDetailsByScreenId(screenId, {includeAssociationCode = true} = {}) {
+    const id = screenId?.toString?.() || screenId;
+    const liveSocketId = getSocketId(id, {includeDebug: true});
+    if (liveSocketId) {
+        return getSocketDetails(liveSocketId, {includeAssociationCode});
+    }
+
+    try {
+        const screen = await Screen.findById(id)
+            .populate('users.user', 'email firstName lastName')
+            .select('-deviceTokenHash');
+        if (!screen) {
+            return false;
+        }
+        return {
+            socketId: null,
+            screenId: id,
+            screen: sanitizeScreen(screen),
+            added: null,
+            disconnected: true
+        };
+    } catch (error) {
+        return false;
+    }
+}
+
+async function getSocketList({includeAssociationCode = true} = {}) {
+    const socketList = getScreenSocketMap();
+    const socketListArray = [];
     for (const socketId in socketList) {
-        const socketDetails = await getSocketDetails(socketId);
+        const socketDetails = await getSocketDetails(socketId, {includeAssociationCode});
         socketListArray.push(socketDetails);
     }
     return socketListArray;
 }
 
 async function getAdminSocketList() {
-    let socketList = adminSocketMap;
-    const socketListArray = []
-    for (const socketId in socketList) {
-        socketListArray[socketId] = socketList[socketId];
-    }
-    return socketListArray;
+    return {...adminSocketMap};
 }
 
-async function getSocketDetails(socketId) {
-    if (!socketMap[socketId]) {
-        return false;
+async function getSuperAdminSocketIds() {
+    const ids = [];
+    for (const socketId of Object.keys(adminSocketMap)) {
+        const userId = adminSocketMap[socketId];
+        try {
+            const user = await User.findById(userId).select('userRole');
+            if (user && user.userRole === 'superadmin') {
+                ids.push(socketId);
+            }
+        } catch (error) {
+            console.error('Erreur superadmin check:', error);
+        }
     }
-    const [screenId, debugScreen] = getScreenId(socketId);
-
-    if (debugScreen) {
-        return {socketId, debugScreen, added: socketMap[socketId].added};
-    }
-    if (socketMap[socketId].associationCode) {
-        return {socketId, associationCode: socketMap[socketId].associationCode, added: socketMap[socketId].added};
-    }
-    try {
-        const screen = await Screen.findById(screenId).populate('users.user');
-        return {socketId, screen, added: socketMap[socketId].added};
-    } catch (error) {
-        return {socketId, screen: {name: 'Écran inconnu', status: 'offline', added: socketMap[socketId].added}};
-    }
+    return ids;
 }
 
 async function emitToAllAdmins(message, data) {
@@ -152,12 +312,37 @@ async function emitToAllAdmins(message, data) {
         if (socket) {
             socket.emit(message, data);
         }
-    })
+    });
+}
+
+async function emitScreenStatusToMembers(screenId, status) {
+    try {
+        const id = screenId?.toString?.() || screenId;
+        const screen = await Screen.findById(id);
+        if (!screen) return;
+        for (const user of screen.users) {
+            const userId = user.user?._id || user.user;
+            for (const adminSocketId of getAdminSocketIdsForUser(userId)) {
+                const adminSocket = io.sockets.sockets.get(adminSocketId);
+                if (adminSocket) {
+                    adminSocket.emit('screen_status', {screenId: id, status});
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Erreur emitScreenStatusToMembers:', error);
+    }
 }
 
 async function emitSocketListToAllAdmins() {
-    const socketListArray = await getSocketList();
-    await emitToAllAdmins('adminSocketList', socketListArray);
+    const socketListArray = await getSocketList({includeAssociationCode: true});
+    const superAdminSocketIds = await getSuperAdminSocketIds();
+    for (const socketId of superAdminSocketIds) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) {
+            socket.emit('adminSocketList', socketListArray);
+        }
+    }
 }
 
 async function getSocketObject(socketId) {
@@ -181,17 +366,25 @@ module.exports = {
     removeSocketId,
     getScreenId,
     getSocketId,
+    resolveLiveSocketId,
+    hasOtherSocketForScreen,
+    clearScreenSocketBindings,
+    disconnectScreenSockets,
     emitScreenDeletion,
     getScreenSocketMap,
     getSocketList,
     getSocketDetails,
+    getSocketDetailsByScreenId,
     getSocketIdWithThisAssociationCode,
     associateAdminSocket,
     getAdminSocketId,
+    getAdminSocketIdsForUser,
     getAdminId,
     removeAdminSocketId,
+    disconnectAdminSocketsForUser,
     getAdminSocketList,
     emitToAllAdmins,
+    emitScreenStatusToMembers,
     emitSocketListToAllAdmins,
     getSocketObject,
     emitMessageToSocket

@@ -1,12 +1,11 @@
-# Étape de construction
-FROM node:latest as builder
+FROM node:22 as builder
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
-RUN npm install
 RUN npm run build
 
-# Étape d'exécution
-FROM node:latest
+FROM node:22-alpine
 WORKDIR /app
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
@@ -15,4 +14,3 @@ COPY --from=builder /app/package.json ./package.json
 
 EXPOSE 3000
 CMD ["npm", "start"]
-

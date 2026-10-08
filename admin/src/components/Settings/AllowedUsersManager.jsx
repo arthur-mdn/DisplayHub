@@ -4,7 +4,7 @@ import config from '../../config';
 import Loading from "../Loading.jsx";
 import {toast} from "react-toastify";
 import Modal from "../Modal.jsx";
-import {FaPen, FaPlus, FaTrash} from "react-icons/fa6";
+import {FaPen, FaPlus, FaTrash, FaUsers} from "react-icons/fa6";
 
 const permissions = [
     "name", "featured_image", "logo", "icons", "meteo", "directions", "photos", "dark_mode", "text_slides", "allowed_users", "control", "avanced_settings"
@@ -147,11 +147,11 @@ function AllowedUsersManager({ screenId, initialAllowedUsers, onConfigChange }) 
                                     <div>
                                         {user.role !== "creator" ? (
                                             <>
-                                                {user.permissions.reduce((acc, permission, index) => {
+                                                {user.permissions.reduce((acc, permission, permIndex) => {
                                                     return acc === null
-                                                        ? <span key={index} className={"badge"}>{permisionsToText[permission]}</span>
+                                                        ? <span key={permIndex} className={"badge"}>{permisionsToText[permission]}</span>
                                                         : <>
-                                                            {acc}, <span key={index} className={"badge"}>{permisionsToText[permission]}</span>
+                                                            {acc}, <span key={permIndex} className={"badge"}>{permisionsToText[permission]}</span>
                                                         </>
                                                 }, null)}
                                             </>
@@ -178,6 +178,13 @@ function AllowedUsersManager({ screenId, initialAllowedUsers, onConfigChange }) 
                                 </div>
                             </div>
                         ))}
+                        {allowedUsers.filter((user) => user.role !== "creator").length === 0 && (
+                            <div className="admin-empty-state">
+                                <FaUsers size={42}/>
+                                <h4>Aucun utilisateur autorisé</h4>
+                                <p>Ajoutez un collaborateur pour partager l'accès à cet écran.</p>
+                            </div>
+                        )}
                     </div>
 
                     <button type={"button"} className={"actionButton fr ai-c"} onClick={() => setIsModalOpen(true)}>

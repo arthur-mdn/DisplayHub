@@ -1,89 +1,86 @@
-//about/screenRoutes.js
-const Screen = require("../models/Screen")
-const User = require("../models/User")
-const express = require("express");
+const Screen = require('../models/Screen');
+const User = require('../models/User');
+const express = require('express');
 const router = express.Router();
 const verifyToken = require('../others/verifyToken');
-const {checkUserPermissions} = require("../others/checkUserPermissions");
-const cityList = require("../datas/villesFR_NoDoubles.json");
-const multer = require("multer");
-const path = require("path");
+const {checkUserPermissions, isUserSuperAdmin} = require('../others/checkUserPermissions');
+const cityList = require('../datas/villesFR_NoDoubles.json');
 const socketUtils = require('../utils/socket/socketUtils');
-const axios = require("axios");
-const Meteo = require("../models/Meteo");
-const Image = require("../models/Image");
-const {updateWeatherData} = require("../utils/weatherUtils");
-const mongoose = require("mongoose");
+const axios = require('axios');
+const Meteo = require('../models/Meteo');
+const Image = require('../models/Image');
+const {updateWeatherData} = require('../utils/weatherUtils');
+const mongoose = require('mongoose');
+const {processScreenObj} = require('../others/sanitizeScreen');
+const {upload, removeUploadedFiles, validateUploadedFiles, enforceScreenUploadQuota} = require('../others/uploadUtils');
+const {normalizeAssignableRole, sanitizeAssignablePermissions} = require('../others/screenRoles');
 
-
-const imageFilter = (req, file, cb) => {
-    if (!file.mimetype.startsWith('image/')) {
-        return cb(new Error('Seuls les fichiers image sont autorisés!'), false);
+async function ensureScreenMember(req, res, next) {
+    try {
+        const screen = await Screen.findOne({_id: req.selectedScreen, 'users.user': req.user.userId});
+        if (!screen) {
+            return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
+        }
+        req.screen = screen;
+        next();
+    } catch (error) {
+        res.status(500).send({error: 'Erreur serveur'});
     }
-    cb(null, true);
-};
+}
 
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'uploads/');
-    },
-    filename: function (req, file, cb) {
-        cb(null, file.fieldname + '-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6 + 2) + path.extname(file.originalname));
+function toIdString(value) {
+    if (value == null) return '';
+    const id = value._id ?? value;
+    return id?.toString?.() || String(id);
+}
+
+function assertOwnedIdList(currentIds, newOrder) {
+    if (!Array.isArray(newOrder)) {
+        return {ok: false, error: 'newOrder doit être un tableau'};
     }
-});
-
-const upload = multer({
-    storage: storage,
-    fileFilter: imageFilter
-});
-
-
-function processScreenObj(screen, currentUserId) {
-    const screenObj = screen.toObject();
-
-    // Trouver l'utilisateur et ajuster les permissions
-    const user = screen.users.find(user => user.user._id.toString() === currentUserId);
-    if (user && user.role === "creator") {
-        screenObj.permissions = ["creator"];
-    } else {
-        screenObj.permissions = user.permissions;
+    const current = currentIds.map(toIdString);
+    const next = newOrder.map(toIdString);
+    if (next.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+        return {ok: false, error: 'Identifiant invalide dans newOrder'};
     }
+    if (next.length !== current.length) {
+        return {ok: false, error: 'newOrder doit contenir exactement les éléments existants'};
+    }
+    const currentSet = new Set(current);
+    const nextSet = new Set(next);
+    if (currentSet.size !== nextSet.size) {
+        return {ok: false, error: 'newOrder contient des doublons ou des éléments étrangers'};
+    }
+    for (const id of nextSet) {
+        if (!currentSet.has(id)) {
+            return {ok: false, error: 'Identifiant extérieur à cet écran'};
+        }
+    }
+    return {ok: true, ids: next};
+}
 
-    // Filtrer l'utilisateur actuel de la liste des utilisateurs
-    screenObj.users = screenObj.users.filter(user => user.user._id.toString() !== currentUserId);
-
-    // Supprimer les informations sensibles des comptes utilisateurs (password, socketId)
-    // tout en conservant le "role" et "creation"
-    screenObj.users = screenObj.users.map(user => {
-        const {password, socketId, user: userInfo, ...rest} = user;
-        const {_id, email, firstName, lastName} = userInfo;
-        return {
-            ...rest,
-            user: {
-                _id,
-                email,
-                firstName,
-                lastName,
-                role: user.role,
-                creation: user.creation,
+function asyncHandler(fn) {
+    return (req, res, next) => {
+        Promise.resolve(fn(req, res, next)).catch((error) => {
+            console.error(error);
+            if (!res.headersSent) {
+                res.status(500).send({error: 'Erreur serveur'});
             }
-        };
-    });
-
-    return screenObj;
+        });
+    };
 }
 
 
-router.get('/screens', verifyToken, async (req, res) => {
+router.get('/screens', verifyToken, asyncHandler(async (req, res) => {
     const screens = await Screen.find({"users.user": req.user.userId});
     if (screens) {
         res.send({success: true, screens});
     } else {
         res.status(404).send({error: 'Aucun écran trouvé'});
     }
-});
+}));
 
-router.get('/screens/:id', verifyToken, async (req, res) => {
+router.get('/screens/:id', verifyToken, asyncHandler(async (req, res) => {
     const {id} = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).send({error: 'ID invalide'});
@@ -99,7 +96,7 @@ router.get('/screens/:id', verifyToken, async (req, res) => {
         console.error('Erreur lors de la récupération de l\'écran:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 const hasPermission = async (userId, screenId, attribute) => {
     const screen = await Screen.findById(screenId).populate('users.user');
@@ -112,19 +109,30 @@ const hasPermission = async (userId, screenId, attribute) => {
     return user.permissions.includes(attribute);
 };
 
-router.post('/screens/update', verifyToken, upload.fields([
+router.post('/screens/update', verifyToken, ensureScreenMember, upload.fields([
     {name: 'logo', maxCount: 1},
     {name: 'featured_image', maxCount: 1}
-]), async (req, res) => {
+]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const userId = req.user.userId;
     try {
-        let screen = await Screen.findOne({_id: screenId, "users.user": userId});
-        if (!screen) {
-            return res.status(404).send({error: 'Écran non trouvé'});
+        if (req.files && !validateUploadedFiles(req.files)) {
+            return res.status(400).send({error: 'Fichier image invalide'});
+        }
+        if (req.files) {
+            const quota = await enforceScreenUploadQuota(screenId, req.files);
+            if (!quota.ok) {
+                return res.status(400).send({error: quota.error});
+            }
         }
 
-        if (req.files && req.files['logo'] && await hasPermission(userId, screenId, "logo")) {
+        let screen = req.screen;
+
+        if (req.files && req.files['logo']) {
+            if (!await hasPermission(userId, screenId, 'logo')) {
+                removeUploadedFiles(req.files);
+                return res.status(403).send({error: 'Permission refusée'});
+            }
             const newLogo = new Image({
                 screen: screenId,
                 type: 'logo',
@@ -141,7 +149,11 @@ router.post('/screens/update', verifyToken, upload.fields([
             screen.featured_image = defaultFeaturedImage._id;
         }
 
-        if (req.files && req.files['featured_image'] && await hasPermission(userId, screenId, "featured_image")) {
+        if (req.files && req.files['featured_image']) {
+            if (!await hasPermission(userId, screenId, 'featured_image')) {
+                removeUploadedFiles(req.files);
+                return res.status(403).send({error: 'Permission refusée'});
+            }
             const newFeaturedImage = new Image({
                 screen: screenId,
                 type: 'featured_image',
@@ -160,6 +172,18 @@ router.post('/screens/update', verifyToken, upload.fields([
                     return res.status(403).send({error: 'Permission refusée'});
                 }
                 screen = await updateWeatherData(screenId, value);
+            } else if (attribute === "config.meteo_corner") {
+                if (!await hasPermission(userId, screenId, "meteo")) {
+                    return res.status(403).send({error: 'Permission refusée'});
+                }
+                const allowedCorners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+                if (!allowedCorners.includes(value)) {
+                    return res.status(400).send({error: 'Coin météo invalide'});
+                }
+                if (!screen.config) {
+                    screen.config = {};
+                }
+                screen.config.meteo_corner = value;
             } else if (attribute === 'dark_mode') {
                 if (!await hasPermission(userId, screenId, "dark_mode")) {
                     return res.status(403).send({error: 'Permission refusée'});
@@ -198,21 +222,27 @@ router.post('/screens/update', verifyToken, upload.fields([
         socketUtils.emitConfigUpdate(screenId, populatedScreen);
         res.send({success: true, screenObj: screenObj});
     } catch (error) {
+        removeUploadedFiles(req.files);
         console.error('Erreur lors de la mise à jour :', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-// Suppression d'un écran
-router.delete('/screens/', verifyToken, async (req, res) => {
-    const screenId = req.selectedScreen
+router.delete('/screens/', verifyToken, asyncHandler(async (req, res) => {
+    const screenId = req.selectedScreen;
 
     try {
-        const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
+        const screen = await Screen.findOne({_id: screenId, 'users.user': req.user.userId}).populate('users.user');
 
         if (!screen) {
             return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
+        }
+
+        const membership = screen.users.find((u) => u.user._id.toString() === req.user.userId);
+        const superAdmin = await isUserSuperAdmin(req.user.userId);
+        if (!superAdmin && (!membership || membership.role !== 'creator')) {
+            return res.status(403).send({error: 'Seul le créateur peut supprimer cet écran'});
         }
 
         await Screen.findByIdAndDelete(screenId);
@@ -223,16 +253,27 @@ router.delete('/screens/', verifyToken, async (req, res) => {
         console.error('Erreur lors de la suppression de l\'écran:', error);
         res.status(500).send({error: 'Erreur serveur lors de la suppression de l\'écran'});
     }
-});
+}));
 
 
-router.post('/screens/icons', verifyToken, upload.array('icon', 10), checkUserPermissions(["icons"]), async (req, res) => {
-    const screenId = req.selectedScreen
+router.post('/screens/icons', verifyToken, checkUserPermissions(['icons']), upload.array('icon', 10), asyncHandler(async (req, res) => {
+    const screenId = req.selectedScreen;
 
-    const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
+    const screen = await Screen.findOne({_id: screenId, 'users.user': req.user.userId});
 
     if (!screen) {
+        removeUploadedFiles(req.files);
         return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
+    }
+
+    if (req.files && !validateUploadedFiles(req.files)) {
+        return res.status(400).send({error: 'Fichier image invalide'});
+    }
+    if (req.files) {
+        const quota = await enforceScreenUploadQuota(screenId, req.files);
+        if (!quota.ok) {
+            return res.status(400).send({error: quota.error});
+        }
     }
 
     if (req.files) {
@@ -254,9 +295,9 @@ router.post('/screens/icons', verifyToken, upload.array('icon', 10), checkUserPe
     } else {
         res.status(400).send({error: 'Aucun fichier fourni'});
     }
-});
+}));
 
-router.post('/screens/icons/addDefault', verifyToken, checkUserPermissions(["icons"]), async (req, res) => {
+router.post('/screens/icons/addDefault', verifyToken, checkUserPermissions(["icons"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen
     const {iconId} = req.body;
 
@@ -282,9 +323,9 @@ router.post('/screens/icons/addDefault', verifyToken, checkUserPermissions(["ico
         console.error('Erreur lors de l\'ajout de l\'icône par défaut:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
-router.delete('/screens/icons', verifyToken, checkUserPermissions(["icons"]), async (req, res) => {
+router.delete('/screens/icons', verifyToken, checkUserPermissions(["icons"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
 
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
@@ -309,10 +350,10 @@ router.delete('/screens/icons', verifyToken, checkUserPermissions(["icons"]), as
         console.error('Erreur lors de la suppression de l\'icone:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-router.post('/screens/icons/reorder', verifyToken, checkUserPermissions(["icons"]), async (req, res) => {
+router.post('/screens/icons/reorder', verifyToken, checkUserPermissions(["icons"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen
     const {newOrder} = req.body;
 
@@ -322,8 +363,13 @@ router.post('/screens/icons/reorder', verifyToken, checkUserPermissions(["icons"
         return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
     }
 
+    const ownership = assertOwnedIdList(screen.icons || [], newOrder);
+    if (!ownership.ok) {
+        return res.status(400).send({error: ownership.error});
+    }
+
     try {
-        const updatedScreen = await Screen.findByIdAndUpdate(screenId, {'icons': newOrder}, {new: true});
+        const updatedScreen = await Screen.findByIdAndUpdate(screenId, {'icons': ownership.ids}, {new: true});
         socketUtils.emitConfigUpdate(screenId, updatedScreen);
         const screenObj = processScreenObj(updatedScreen, req.user.userId);
         res.send({success: true, screen: screenObj});
@@ -331,10 +377,10 @@ router.post('/screens/icons/reorder', verifyToken, checkUserPermissions(["icons"
         console.error('Erreur lors de la réorganisation des icônes:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-router.post('/screens/directions', verifyToken, checkUserPermissions(["directions"]), async (req, res) => {
+router.post('/screens/directions', verifyToken, checkUserPermissions(["directions"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
@@ -352,9 +398,9 @@ router.post('/screens/directions', verifyToken, checkUserPermissions(["direction
         console.error('Erreur lors de l\'ajout d\'une direction:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
-router.delete('/screens/directions/:directionId', verifyToken, checkUserPermissions(["directions"]), async (req, res) => {
+router.delete('/screens/directions/:directionId', verifyToken, checkUserPermissions(["directions"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
@@ -372,9 +418,9 @@ router.delete('/screens/directions/:directionId', verifyToken, checkUserPermissi
         console.error('Erreur lors de la suppression d\'une direction:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
-router.put('/screens/directions/:directionId', verifyToken, checkUserPermissions(["directions"]), async (req, res) => {
+router.put('/screens/directions/:directionId', verifyToken, checkUserPermissions(["directions"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
@@ -397,17 +443,30 @@ router.put('/screens/directions/:directionId', verifyToken, checkUserPermissions
         console.error('Erreur lors de la mise à jour d\'une direction:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
-router.post('/screens/directions/reorder', verifyToken, checkUserPermissions(["directions"]), async (req, res) => {
+router.post('/screens/directions/reorder', verifyToken, checkUserPermissions(["directions"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
     if (!screen) {
         return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
     }
+
+    const newOrder = req.body.newOrder;
+    if (!Array.isArray(newOrder)) {
+        return res.status(400).send({error: 'newOrder doit être un tableau'});
+    }
+    const ownership = assertOwnedIdList(
+        (screen.directions || []).map((d) => d._id),
+        newOrder.map((d) => d?._id)
+    );
+    if (!ownership.ok) {
+        return res.status(400).send({error: ownership.error});
+    }
+
     try {
-        screen.directions = req.body.newOrder;
+        screen.directions = newOrder;
         await screen.save();
         socketUtils.emitConfigUpdate(screenId, screen);
         const screenObj = processScreenObj(screen, req.user.userId);
@@ -416,14 +475,24 @@ router.post('/screens/directions/reorder', verifyToken, checkUserPermissions(["d
         console.error('Erreur lors de la réorganisation des directions:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
-router.post('/screens/photos', verifyToken, checkUserPermissions(["photos"]), upload.array('photos', 10), async (req, res) => {
+router.post('/screens/photos', verifyToken, checkUserPermissions(["photos"]), upload.array('photos', 10), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
 
     if (!screen) {
+        removeUploadedFiles(req.files);
         return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
+    }
+    if (req.files && !validateUploadedFiles(req.files)) {
+        return res.status(400).send({error: 'Fichier image invalide'});
+    }
+    if (req.files) {
+        const quota = await enforceScreenUploadQuota(screenId, req.files);
+        if (!quota.ok) {
+            return res.status(400).send({error: quota.error});
+        }
     }
     if (req.files) {
 
@@ -445,9 +514,9 @@ router.post('/screens/photos', verifyToken, checkUserPermissions(["photos"]), up
     } else {
         res.status(400).send({error: 'Aucun fichier fourni'});
     }
-});
+}));
 
-router.delete('/screens/photos', verifyToken, checkUserPermissions(["photos"]), async (req, res) => {
+router.delete('/screens/photos', verifyToken, checkUserPermissions(["photos"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const {photoId} = req.body;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
@@ -471,10 +540,10 @@ router.delete('/screens/photos', verifyToken, checkUserPermissions(["photos"]), 
         console.error('Erreur lors de la suppression de la photo:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-router.post('/screens/photos/reorder', verifyToken, checkUserPermissions(["photos"]), async (req, res) => {
+router.post('/screens/photos/reorder', verifyToken, checkUserPermissions(["photos"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const {newOrder} = req.body;
     const screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
@@ -483,8 +552,13 @@ router.post('/screens/photos/reorder', verifyToken, checkUserPermissions(["photo
         return res.status(404).send({error: 'Écran non trouvé ou non autorisé'});
     }
 
+    const ownership = assertOwnedIdList(screen.photos || [], newOrder);
+    if (!ownership.ok) {
+        return res.status(400).send({error: ownership.error});
+    }
+
     try {
-        const updatedScreen = await Screen.findByIdAndUpdate(screenId, {'photos': newOrder}, {new: true});
+        const updatedScreen = await Screen.findByIdAndUpdate(screenId, {'photos': ownership.ids}, {new: true});
         socketUtils.emitConfigUpdate(screenId, updatedScreen);
         const screenObj = processScreenObj(updatedScreen, req.user.userId);
         res.send({success: true, screen: screenObj});
@@ -492,10 +566,10 @@ router.post('/screens/photos/reorder', verifyToken, checkUserPermissions(["photo
         console.error('Erreur lors de la réorganisation des photos:', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-router.post('/screens/updateConfig', verifyToken, checkUserPermissions(["avanced_settings"]), async (req, res) => {
+router.post('/screens/updateConfig', verifyToken, checkUserPermissions(["avanced_settings"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const configUpdates = req.body;
     let screen = await Screen.findOne({_id: screenId, "users.user": req.user.userId});
@@ -519,11 +593,10 @@ router.post('/screens/updateConfig', verifyToken, checkUserPermissions(["avanced
         console.error('Erreur lors de la mise à jour de la configuration :', error);
         res.status(500).send({error: 'Erreur serveur'});
     }
-});
+}));
 
 
-// Ajouter un utilisateur à un écran
-router.post('/screens/users', verifyToken, checkUserPermissions(["allowed_users"]), async (req, res) => {
+router.post('/screens/users', verifyToken, checkUserPermissions(["allowed_users"]), asyncHandler(async (req, res) => {
     const screenId = req.selectedScreen;
     const {userEmail, role, permissions} = req.body;
 
@@ -533,22 +606,29 @@ router.post('/screens/users', verifyToken, checkUserPermissions(["allowed_users"
     const user = await User.findOne({email: userEmail});
     if (!user) return res.status(404).send({error: 'Utilisateur non trouvé'});
 
-    // Vérifier si l'utilisateur est déjà ajouté
     const isUserAdded = screen.users.some(u => u.user.toString() === user._id.toString());
     if (isUserAdded) return res.status(400).send({error: 'Utilisateur déjà ajouté'});
 
-    screen.users.push({user: user._id, role, permissions});
+    const safeRole = normalizeAssignableRole(role);
+    if (!safeRole) {
+        return res.status(400).send({error: 'Rôle non autorisé'});
+    }
+
+    screen.users.push({
+        user: user._id,
+        role: safeRole,
+        permissions: sanitizeAssignablePermissions(permissions)
+    });
     await screen.save();
 
     res.send({success: true, message: 'Utilisateur ajouté avec succès'});
-});
+}));
 
 
-// Modifier les permissions d'un utilisateur sur un écran
-router.put('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed_users"]), async (req, res) => {
+router.put('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed_users"]), asyncHandler(async (req, res) => {
     const {userId} = req.params;
     const screenId = req.selectedScreen;
-    const {permissions} = req.body;
+    const {permissions, role} = req.body;
 
     const screen = await Screen.findById(screenId);
     if (!screen) return res.status(404).send({error: 'Écran non trouvé'});
@@ -556,21 +636,36 @@ router.put('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed
     const userIndex = screen.users.findIndex(u => u.user.toString() === userId);
     if (userIndex === -1) return res.status(404).send({error: 'Utilisateur non trouvé sur cet écran'});
 
-    screen.users[userIndex].permissions = permissions;
+    if (screen.users[userIndex].role === 'creator') {
+        return res.status(403).send({error: 'Impossible de modifier le créateur de l\'écran'});
+    }
+
+    if (role !== undefined) {
+        const safeRole = normalizeAssignableRole(role);
+        if (!safeRole) {
+            return res.status(400).send({error: 'Rôle non autorisé'});
+        }
+        screen.users[userIndex].role = safeRole;
+    }
+
+    screen.users[userIndex].permissions = sanitizeAssignablePermissions(permissions);
     await screen.save();
 
     res.send({success: true, message: 'Permissions modifiées avec succès'});
-});
+}));
 
-// Supprimer un utilisateur d'un écran
-router.delete('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed_users"]), async (req, res) => {
+router.delete('/screens/users/:userId', verifyToken, checkUserPermissions(["allowed_users"]), asyncHandler(async (req, res) => {
     const {userId} = req.params;
     const screenId = req.selectedScreen;
 
     const screen = await Screen.findById(screenId);
     if (!screen) return res.status(404).send({error: 'Écran non trouvé'});
 
-    if (screen.users.find(u => u.user.toString() === userId).role === 'creator') {
+    const member = screen.users.find(u => u.user.toString() === userId);
+    if (!member) {
+        return res.status(404).send({error: 'Utilisateur non trouvé sur cet écran'});
+    }
+    if (member.role === 'creator') {
         return res.status(403).send({error: 'Impossible de supprimer le créateur de l\'écran'});
     }
 
@@ -578,7 +673,7 @@ router.delete('/screens/users/:userId', verifyToken, checkUserPermissions(["allo
     await screen.save();
 
     res.send({success: true, message: 'Utilisateur supprimé avec succès'});
-});
+}));
 
 
 module.exports = router;

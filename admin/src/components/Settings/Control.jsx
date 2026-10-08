@@ -162,7 +162,7 @@ export default function Control({ screen }) {
             });
         }
         socket.on('screen_status', (updatedScreen) => {
-            if (updatedScreen.screenId === screen._id) {
+            if (String(updatedScreen.screenId) === String(screen._id)) {
                 setActualScreenStatus(updatedScreen.status);
                 if (updatedScreen.status === 'online') {
                     const statusCommandId = uuidv4();
@@ -179,14 +179,9 @@ export default function Control({ screen }) {
             }
         });
 
-        socket.on('disconnect', () => {
-            setActualScreenStatus('offline');
-        });
-
         return () => {
             socket.off('server_forward_client_response_to_admin');
             socket.off('screen_status');
-            socket.off('disconnect');
         };
     }, [socket, screen._id]);
 

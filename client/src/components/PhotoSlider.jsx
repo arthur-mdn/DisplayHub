@@ -1,35 +1,55 @@
 import React, {useEffect, useState} from 'react';
-import Slider from 'react-slick';
-import "slick-carousel/slick/slick.css";
-import "slick-carousel/slick/slick-theme.css";
-import config from "../config.js";
-import {cacheImages, getCachedImage} from "../utils/cacheUtils.js";
+import SlickSlider from 'react-slick';
+import 'slick-carousel/slick/slick.css';
+import 'slick-carousel/slick/slick-theme.css';
+import config from '../config.js';
+import {cacheImages, getCachedImage} from '../utils/cacheUtils.js';
+import MeteoViewer from './MeteoViewer.jsx';
 
-function PhotoSlider({ photos, interval, hideDots, screen }) {
-    const [currentIndex, setCurrentIndex] = useState(0);
+const Slider = SlickSlider.default || SlickSlider;
+
+const VALID_CORNERS = new Set(['top-left', 'top-right', 'bottom-left', 'bottom-right']);
+
+function PhotoSlider({photos, interval, hideDots, screen}) {
     const [cachedPhotos, setCachedPhotos] = useState([]);
-
-    const loadImages = async () => {
-        const loadedPhotos = await Promise.all(photos.map(async (photo) => {
-            const cachedImage = await getCachedImage(photo._id);
-            if (cachedImage) {
-                return URL.createObjectURL(cachedImage);
-            } else {
-                return `${(photo.where === "server" ? config.serverUrl : "") + "/" + photo.value}`;
-            }
-        }));
-        setCachedPhotos(loadedPhotos);
-    };
+    const hasDirections = screen.directions?.length > 0;
+    const hasMeteo = Boolean(screen.meteo && Object.keys(screen.meteo.data || {}).length > 0);
+    const meteoCorner = VALID_CORNERS.has(screen.config?.meteo_corner)
+        ? screen.config.meteo_corner
+        : 'top-left';
 
     useEffect(() => {
+        const objectUrls = [];
+        let cancelled = false;
+
         async function cacheAndLoadImages() {
-            if (photos.length > 0) {
-                await cacheImages(photos);
+            if (!photos?.length) {
+                setCachedPhotos([]);
+                return;
             }
-            loadImages();
+
+            await cacheImages(photos);
+            const loadedPhotos = await Promise.all(photos.map(async (photo) => {
+                const cachedImage = await getCachedImage(photo._id);
+                if (cachedImage) {
+                    const url = URL.createObjectURL(cachedImage);
+                    objectUrls.push(url);
+                    return url;
+                }
+                return `${(photo.where === 'server' ? config.serverUrl : '') + '/' + photo.value}`;
+            }));
+
+            if (!cancelled) {
+                setCachedPhotos(loadedPhotos);
+            }
         }
 
         cacheAndLoadImages();
+
+        return () => {
+            cancelled = true;
+            objectUrls.forEach((url) => URL.revokeObjectURL(url));
+        };
     }, [photos]);
 
     const settings = {
@@ -40,19 +60,27 @@ function PhotoSlider({ photos, interval, hideDots, screen }) {
         slidesToShow: 1,
         slidesToScroll: 1,
         autoplay: true,
-        autoplaySpeed: interval * 1000,
-        beforeChange: (current, next) => setCurrentIndex(next),
+        autoplaySpeed: (interval || 10) * 1000
     };
 
     return (
-        <div style={{ width: screen.directions.length > 0 ? '60%' : '100%' }} className={"photos-full-container"}>
+        <div
+            className="display-gallery"
+            data-has-directions={hasDirections ? "true" : "false"}
+            data-hide-dots={hideDots ? "true" : "false"}
+        >
             <Slider {...settings}>
                 {cachedPhotos.map((photo, index) => (
-                    <div key={index} style={{ width: '100%', height: '100%' }}>
-                        <img src={photo} alt={`Slide ${index}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div key={index} className="display-gallery__slide">
+                        <img src={photo} alt={`Slide ${index}`} className="display-gallery__img"/>
                     </div>
                 ))}
             </Slider>
+            {hasMeteo && (
+                <div className="display-meteo-card" data-corner={meteoCorner}>
+                    <MeteoViewer screen={screen}/>
+                </div>
+            )}
         </div>
     );
 }

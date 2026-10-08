@@ -1,42 +1,38 @@
-function MeteoViewer({ screen }) {
+function MeteoViewer({screen}) {
+    if (!screen.meteo || Object.keys(screen.meteo.data || {}).length === 0) {
+        return null;
+    }
+
+    const weather = screen.meteo.data.weather?.[0];
+    const icon = weather?.icon;
+    const iconSrc = icon === '01n'
+        ? '/elements/meteo/01n-edited.png'
+        : `https://openweathermap.org/img/wn/${icon}@2x.png`;
+    const temp = `${screen.meteo.data.main.temp.toFixed(1)}°`;
+    const description = weather?.description;
 
     return (
-        <>
-            { screen.meteo && Object.keys(screen.meteo.data).length > 0 && (
-                <div className={"meteo card fr ai-c"}>
-                    {
-                        (screen.meteo.data && screen.meteo.data.weather) && (
-                            <>
-                                {screen.meteo.data.weather[0].icon === '01n' && (
-                                    <img src="/elements/meteo/01n-edited.png" alt="Météo" style={{width:'6vw', height:'5vw', objectFit:"cover"}}/>
-                                )
-                                }
-                                {screen.meteo.data.weather[0].icon !== '01n' && (
-                                    <img src={`https://openweathermap.org/img/wn/${screen.meteo.data.weather[0].icon}@2x.png`} alt="Météo" style={{width:'6vw', height:'5vw', objectFit:"cover"}}/>
-                                )
-                                }
-                            </>
-                        )
-                    }
-
-                    {
-                        screen.meteo.data && (
-                            <div>
-                                <h3 style={{fontSize:'1.3vw', fontWeight:"bold", lineHeight:'1.3vw'}}>{screen.meteo.data.name}</h3>
-                                <p  style={{fontSize:'1.3vw', fontWeight:"bold", lineHeight:'1.3vw'}}>{screen.meteo.data.main.temp.toFixed(1)}°C</p>
-                                <p style={{textTransform:"capitalize",fontSize:'1.3vw', fontWeight:"bold", lineHeight:'1.3vw'}}>{screen.meteo.data.weather[0].description}</p>
-                            </div>
-                        )
-                    }
-
-
-                </div>
-                )
-            }
-        </>
-
+        <div className="display-meteo">
+            {weather && (
+                <img src={iconSrc} alt="" className="display-meteo__icon"/>
+            )}
+            <div className="display-meteo__meta">
+                <p className="display-meteo__temp">{temp}</p>
+                {description && (
+                    <p className="display-meteo__desc">{description}</p>
+                )}
+                <p className="display-meteo__city">
+                    <svg className="display-meteo__pin" viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                            fill="currentColor"
+                            d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"
+                        />
+                    </svg>
+                    <span>{screen.meteo.data.name}</span>
+                </p>
+            </div>
+        </div>
     );
 }
+
 export default MeteoViewer;
-
-

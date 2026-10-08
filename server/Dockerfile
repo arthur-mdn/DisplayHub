@@ -1,6 +1,7 @@
-FROM node:latest
+FROM node:22
 WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
 COPY . .
-RUN npm install
-EXPOSE 3001
+EXPOSE 3003
 CMD ["npm", "start"]

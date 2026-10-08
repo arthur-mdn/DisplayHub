@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import axios from 'axios';
 import config from '../../config';
-import {DragDropContext, Draggable, Droppable} from 'react-beautiful-dnd';
+import {DragDropContext, Draggable, Droppable} from '@hello-pangea/dnd';
 import {FaPencil, FaTrash} from "react-icons/fa6";
 import Modal from "../Modal.jsx";
 import AddDirection from "./AddDirection.jsx";
@@ -81,37 +81,42 @@ function DirectionsManager({ screenId, initialDirections, onDirectionsChange }) 
                                             ref={provided.innerRef}
                                             {...provided.draggableProps}
                                             {...provided.dragHandleProps}
-                                            style={{
-                                                ...provided.draggableProps.style,
-                                                ...provided.dragHandleProps.style,
-                                                padding:'1rem',
-                                                borderRadius:'0.5rem',
-                                                backgroundColor:'white',
-                                                marginBottom:'1rem'
-                                            }}
-                                            className={"shadow"}
+                                            style={provided.draggableProps.style}
+                                            className="admin-direction-card"
                                         >
-                                            <div className={"fr ai-c jc-sb"}>
-                                                <div className={"fr ai-c g1"}>
-                                                    <img src={`/elements/arrows/${direction.arrow.style}`} alt="Flèche" style={{ transform: `rotate(${direction.arrow.orientation}deg)`, width: '50px' }} />
-                                                    <div>
-                                                        <h3 style={{ color: `${direction.title.color}` }}>
-                                                            {direction.title.text}
-                                                        </h3>
-                                                        <p>
+                                            <div className="admin-direction-card__body">
+                                                <img
+                                                    src={`/elements/arrows/${direction.arrow.style}`}
+                                                    alt="Flèche"
+                                                    className="admin-direction-card__arrow"
+                                                    style={{transform: `rotate(${direction.arrow.orientation}deg)`}}
+                                                />
+                                                <div className="admin-direction-card__sep" aria-hidden="true"/>
+                                                <div className="admin-direction-card__text">
+                                                    <h3
+                                                        className="admin-direction-card__title"
+                                                        style={{
+                                                            color: direction.title.color === "#000000"
+                                                                ? undefined
+                                                                : direction.title.color
+                                                        }}
+                                                    >
+                                                        {direction.title.text}
+                                                    </h3>
+                                                    {direction.description ? (
+                                                        <p className="admin-direction-card__subtitle">
                                                             {direction.description}
                                                         </p>
-                                                    </div>
+                                                    ) : null}
                                                 </div>
-                                                <div className={"fr g0-5"}>
-                                                    <button type={"button"} className={"actionButton"} onClick={() => setEditDirection(direction)}>
-                                                        <FaPencil/>
-                                                    </button>
-                                                    <button type={"button"} className={"actionButton"} onClick={() => deleteDirection(direction._id)}>
-                                                        <FaTrash/>
-                                                    </button>
-                                                </div>
-
+                                            </div>
+                                            <div className="admin-direction-card__actions fr g0-5">
+                                                <button type={"button"} className={"actionButton"} onClick={() => setEditDirection(direction)}>
+                                                    <FaPencil/>
+                                                </button>
+                                                <button type={"button"} className={"actionButton"} onClick={() => deleteDirection(direction._id)}>
+                                                    <FaTrash/>
+                                                </button>
                                             </div>
                                         </div>
                                     )}

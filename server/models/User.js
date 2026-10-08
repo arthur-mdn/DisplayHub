@@ -39,6 +39,14 @@ const userSchema = new Schema({
         type: String,
         required: true,
         default: "user"
+    },
+    tokenVersion: {
+        type: Number,
+        default: 0
+    },
+    status: {
+        type: String,
+        default: 'active'
     }
 });
 

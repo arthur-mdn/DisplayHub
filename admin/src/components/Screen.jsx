@@ -66,13 +66,9 @@ function Screen() {
         if (socket) {
             console.log("Socket is connected");
             socket.on('screen_status', (updatedScreen) => {
-                if (updatedScreen.screenId === screenId) {
+                if (String(updatedScreen.screenId) === String(screenId)) {
                     setScreen((prevScreen) => ({...prevScreen, status: updatedScreen.status}));
                 }
-            });
-
-            socket.on('disconnect', () => {
-                setScreen((prevScreen) => ({...prevScreen, status: "offline"}));
             });
 
             return () => {
@@ -115,7 +111,6 @@ function Screen() {
                         <div className={`skeleton-screen-status-bubble`}></div>
                         <div className={`skeleton-screen-status-bar`}></div>
                     </div>
-                    <div className={"skeleton-screen-id"}></div>
                 </div>
             </div>
             {buttons.map((button) => (
@@ -231,20 +226,16 @@ function Screen() {
                                                onScreenUpdate(screenObj)
                                            }}/>
                         </div>
-                        <div className={"fc ai-fs g0-25 h100"}>
+                        <div className={"screen__meta"}>
                             <h3 className={"fw-b"}>
                                 {screen.name}
                             </h3>
-                            <div className={`fr g0-5 ai-c`}>
-                                <div className={`${screen.status}`}>
-                                </div>
+                            <div className={`screen__status fr g0-5 ai-c`}>
+                                <div className={`${screen.status} status-bubble`}/>
                                 <span className={`${screen.status}`}>
                                     {screen.status === "online" ? "En ligne" : "Hors ligne"}
                                 </span>
                             </div>
-                            <p style={{opacity: 0.4}}>
-                                {screen._id}
-                            </p>
                         </div>
                     </div>
 

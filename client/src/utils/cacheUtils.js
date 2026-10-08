@@ -1,5 +1,5 @@
 import config from '../config';
-import { openDB, deleteDB } from 'idb';
+import {openDB, deleteDB} from 'idb';
 
 export async function deleteDatabases() {
     try {
@@ -24,7 +24,21 @@ export async function deleteDatabases() {
     }
 }
 
-// Images
+async function fetchAndStore(db, storeName, item) {
+    try {
+        const response = await fetch(`${(item.where === 'server' ? config.serverUrl : '') + '/' + item.value}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        await db.put(storeName, blob, item._id);
+        return true;
+    } catch (error) {
+        console.error('Failed to cache media', item?._id, error);
+        return false;
+    }
+}
+
 async function initImagesDB() {
     return openDB('ImageCache', 1, {
         upgrade(db) {
@@ -37,18 +51,12 @@ async function initImagesDB() {
 
 export async function cacheImages(photos) {
     const db = await initImagesDB();
-
-    const promises = photos.map(async (photo) => {
+    await Promise.allSettled(photos.map(async (photo) => {
         const cachedImage = await db.get('images', photo._id);
         if (!cachedImage) {
-            console.log('Caching image:', photo);
-            const response = await fetch(`${(photo.where === "server" ? config.serverUrl : "") + "/" + photo.value}`);
-            const blob = await response.blob();
-            await db.put('images', blob, photo._id);
+            await fetchAndStore(db, 'images', photo);
         }
-    });
-
-    await Promise.all(promises);
+    }));
 }
 
 export async function getCachedImage(photo) {
@@ -56,7 +64,6 @@ export async function getCachedImage(photo) {
     return await db.get('images', photo);
 }
 
-// Logo
 async function initLogosDB() {
     return openDB('LogoCache', 1, {
         upgrade(db) {
@@ -69,14 +76,10 @@ async function initLogosDB() {
 
 export async function cacheLogo(logo) {
     if (!logo) return;
-
     const db = await initLogosDB();
     const cachedLogo = await db.get('logos', logo._id);
     if (!cachedLogo) {
-        console.log('Caching logo:', logo);
-        const response = await fetch(`${(logo.where === "server" ? config.serverUrl : "") + "/" + logo.value}`);
-        const blob = await response.blob();
-        await db.put('logos', blob, logo._id);
+        await fetchAndStore(db, 'logos', logo);
     }
 }
 
@@ -85,8 +88,6 @@ export async function getCachedLogo(logo) {
     return await db.get('logos', logo);
 }
 
-
-// Icons
 async function initIconsDB() {
     return openDB('IconCache', 1, {
         upgrade(db) {
@@ -99,18 +100,12 @@ async function initIconsDB() {
 
 export async function cacheIcons(icons) {
     const db = await initIconsDB();
-
-    const promises = icons.map(async (icon) => {
+    await Promise.allSettled(icons.map(async (icon) => {
         const cachedIcon = await db.get('icons', icon._id);
         if (!cachedIcon) {
-            console.log('Caching icon:', icon);
-            const response = await fetch(`${(icon.where === "server" ? config.serverUrl : "") + "/" + icon.value}`);
-            const blob = await response.blob();
-            await db.put('icons', blob, icon._id);
+            await fetchAndStore(db, 'icons', icon);
         }
-    });
-
-    await Promise.all(promises);
+    }));
 }
 
 export async function getCachedIcon(icon) {

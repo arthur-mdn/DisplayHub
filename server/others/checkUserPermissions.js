@@ -55,8 +55,7 @@ const checkUserPermissionsOfThisScreen = async (requiredPermission, screenId, us
             return true // Les créateurs ont toutes les permissions
         }
 
-        const hasPermission = user.permissions.includes(requiredPermission);
-        return false
+        return user.permissions.includes(requiredPermission);
 
     } catch (error) {
         console.error('Erreur lors de la vérification des permissions:', error);

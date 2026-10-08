@@ -1,50 +1,63 @@
 import React from "react";
-import MeteoViewer from "./MeteoViewer";
 import TimeViewer from "./TimeViewer";
 import DirectionsViewer from "./DirectionsViewer";
 import PhotoSlider from "./PhotoSlider.jsx";
 import DisplayLogo from "./DisplayLogo.jsx";
-import {Helmet} from "react-helmet";
+import {Helmet} from "react-helmet-async";
 import DisplayIcons from "./DisplayIcons.jsx";
 
 function Screen({configData, isDarkModeActive}) {
+    const hasDirections = configData.directions?.length > 0;
+    const hasPhotos = configData.photos?.length > 0;
+    const hasIcons = configData.icons?.length > 0;
+
     return (
-        <div>
+        <div
+            className="display-shell"
+            style={{'--dir-count': configData.directions?.length || 0, '--icon-count': configData.icons?.length || 0}}
+        >
             <Helmet>
                 <title>{configData.name}</title>
             </Helmet>
-            <div className={"fr jc-sb ai-c g1"}>
-                <DisplayLogo logo={configData.logo} isDarkModeActive={isDarkModeActive}/>
-                {
-                    configData.meteo && (
-                        <MeteoViewer screen={configData}/>
-                    )
-                }
-                <TimeViewer/>
-                {
-                    configData.icons && configData.icons.length > 0 && (
-                        <DisplayIcons icons={configData.icons} isDarkModeActive={isDarkModeActive}/>
-                    )
-                }
-            </div>
-            <div style={{marginTop: '1vw', maxWidth: '100%', height: '75vh', maxHeight: '75vh', gap: '2vw'}}
-                 className={"fr jc-sb directions-and-photos"}>
-                {
-                    configData.directions && configData.directions.length > 0 && (
-                        <DirectionsViewer screen={configData}/>
-                    )
-                }
-                {
-                    configData.photos && configData.photos.length > 0 && (
-                        <PhotoSlider
-                            photos={configData.photos}
-                            interval={configData.config.photos_interval || 3000}
-                            hideDots={configData.config.hide_slider_dots}
-                            screen={configData}
-                        />
-                    )
-                }
-            </div>
+
+            <header className="display-header" data-has-icons={hasIcons ? "true" : "false"}>
+                <div className="display-header__left">
+                    {configData.logo && (
+                        <DisplayLogo logo={configData.logo} isDarkModeActive={isDarkModeActive}/>
+                    )}
+                </div>
+
+                {hasIcons ? (
+                    <>
+                        <div className="display-header__center">
+                            <TimeViewer/>
+                        </div>
+                        <div className="display-header__right">
+                            <DisplayIcons icons={configData.icons} isDarkModeActive={isDarkModeActive}/>
+                        </div>
+                    </>
+                ) : (
+                    <div className="display-header__right">
+                        <TimeViewer/>
+                    </div>
+                )}
+            </header>
+
+            <main
+                className="display-main"
+                data-has-directions={hasDirections ? "true" : "false"}
+                data-has-photos={hasPhotos ? "true" : "false"}
+            >
+                {hasDirections && <DirectionsViewer screen={configData}/>}
+                {hasPhotos && (
+                    <PhotoSlider
+                        photos={configData.photos}
+                        interval={configData.config?.photos_interval || 10}
+                        hideDots={configData.config?.hide_slider_dots}
+                        screen={configData}
+                    />
+                )}
+            </main>
         </div>
     );
 }

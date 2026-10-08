@@ -1,134 +1,183 @@
-// utils/clientSocket.js
-const uuid = require('uuid');
+const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Screen = require('../../models/Screen');
 const socketUtils = require('./socketUtils');
 const {updateWeatherData} = require('../weatherUtils');
+const {verifyDeviceToken} = require('../../others/deviceToken');
+const {sanitizeScreen} = require('../../others/sanitizeScreen');
+
+function safeHandler(handler) {
+    return async (...args) => {
+        try {
+            await handler(...args);
+        } catch (error) {
+            console.error('Client socket handler error:', error);
+            try {
+                args[args.length - 1]?.();
+            } catch {
+                // ignore ack failures
+            }
+        }
+    };
+}
+
+async function assertDeviceAccess(screenId, deviceToken) {
+    if (typeof deviceToken !== 'string' || !deviceToken) {
+        return null;
+    }
+    const id = typeof screenId === 'string' ? screenId : screenId?.toString?.();
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+        return null;
+    }
+    const screen = await Screen.findById(id).select('+deviceTokenHash');
+    if (!screen || !screen.deviceTokenHash) {
+        return null;
+    }
+    if (!verifyDeviceToken(deviceToken, screen.deviceTokenHash)) {
+        return null;
+    }
+    return screen;
+}
+
+async function markScreenOnline(screenId) {
+    await Screen.findByIdAndUpdate(screenId, {status: 'online'});
+    await socketUtils.emitScreenStatusToMembers(screenId, 'online');
+}
+
+async function markScreenOfflineIfUnused(screenId, exceptSocketId = null) {
+    if (!screenId) return;
+    if (socketUtils.hasOtherSocketForScreen(screenId, exceptSocketId)) {
+        return;
+    }
+    await Screen.findByIdAndUpdate(screenId, {status: 'offline'});
+    await socketUtils.emitScreenStatusToMembers(screenId, 'offline');
+}
 
 module.exports = (io, socket) => {
     console.log('Raspberry Pi connected:', socket.id);
 
-    socket.on('associate', async (data) => {
-        console.log('Associate event received:', data);
-        const {screenId} = data;
-        await Screen.findByIdAndUpdate(screenId, {status: "online"});
-        await socketUtils.associateScreenSocket(screenId, socket.id);
-    });
-
-    socket.on('request_code', async () => {
-        const [screenId, debugScreen] = await socketUtils.getScreenId(socket.id);
-        try {
-            await Screen.findByIdAndUpdate(screenId, {status: "offline"});
-        } catch (error) {
-            console.error('Erreur lors de la mise à jour de l\'écran:', error);
+    socket.on('associate', safeHandler(async (data) => {
+        const {screenId, deviceToken} = data || {};
+        const screen = await assertDeviceAccess(screenId, deviceToken);
+        if (!screen) {
+            socket.emit('device_auth_required', {reason: 'invalid_device_identity'});
+            return;
         }
-        const uniqueCode = uuid.v4();
+        await socketUtils.associateScreenSocket(screen._id.toString(), socket.id);
+        await markScreenOnline(screen._id.toString());
+        await socketUtils.emitSocketListToAllAdmins();
+    }));
+
+    socket.on('request_code', safeHandler(async () => {
+        const [previousScreenId] = socketUtils.getScreenId(socket.id);
+        const uniqueCode = crypto.randomUUID();
         await socketUtils.associateSocketWaitingForConfiguration(socket.id, uniqueCode);
+        if (previousScreenId) {
+            await markScreenOfflineIfUnused(previousScreenId, socket.id);
+        }
         socket.emit('receive_code', uniqueCode);
-
         await socketUtils.emitSocketListToAllAdmins();
-    });
+    }));
 
-    socket.on('update_weather', async (data) => {
-        const {screenId} = data;
+    socket.on('update_weather', safeHandler(async (data) => {
+        const {screenId, deviceToken} = data || {};
+        const screen = await assertDeviceAccess(screenId, deviceToken);
+        if (!screen) {
+            socket.emit('device_auth_required', {reason: 'invalid_device_identity'});
+            return;
+        }
+        const screenIdStr = screen._id.toString();
+        const withMeteo = await Screen.findById(screenIdStr).populate('meteo');
+        const weatherId = withMeteo?.meteo?.weatherId;
+        if (!weatherId) {
+            return;
+        }
+        await updateWeatherData(screenIdStr, weatherId);
+        await socketUtils.associateScreenSocket(screenIdStr, socket.id);
+        await markScreenOnline(screenIdStr);
+        const populated = await Screen.findById(screenIdStr)
+            .populate('users.user', 'email firstName lastName')
+            .populate('logo')
+            .populate('featured_image')
+            .populate('icons')
+            .populate('photos')
+            .populate('meteo')
+            .select('-deviceTokenHash');
+        socket.emit('config_updated', sanitizeScreen(populated));
+    }));
+
+    socket.on('update_config', safeHandler(async (data) => {
+        const {screenId, deviceToken} = data || {};
+        const id = typeof screenId === 'string' ? screenId : screenId?.toString?.();
+        if (id && mongoose.Types.ObjectId.isValid(id)) {
+            const existing = await Screen.findById(id).select('+deviceTokenHash');
+            if (existing && !existing.deviceTokenHash) {
+                socket.emit('device_auth_required', {reason: 'device_token_missing'});
+                return;
+            }
+        }
+        const screen = await assertDeviceAccess(screenId, deviceToken);
+        if (!screen) {
+            socket.emit('device_auth_required', {reason: 'invalid_device_identity'});
+            return;
+        }
+        const screenIdStr = screen._id.toString();
+        await socketUtils.associateScreenSocket(screenIdStr, socket.id);
+        await markScreenOnline(screenIdStr);
+        const populated = await Screen.findById(screenIdStr)
+            .populate('users.user', 'email firstName lastName')
+            .populate('logo')
+            .populate('featured_image')
+            .populate('icons')
+            .populate('photos')
+            .populate('meteo')
+            .select('-deviceTokenHash');
+        socket.emit('config_updated', sanitizeScreen(populated || screen));
+        await socketUtils.emitSocketListToAllAdmins();
+    }));
+
+    socket.on('client_control_response', safeHandler(async (data) => {
+        const [screenId] = socketUtils.getScreenId(socket.id);
+        if (!screenId) return;
         const screen = await Screen.findById(screenId);
-        if (screen) {
-            try {
-                const updatedScreen = await updateWeatherData(screenId, screen.meteo.weatherId);
-                await Screen.findByIdAndUpdate(screenId, {status: "online"});
-                socket.emit('config_updated', updatedScreen);
-            } catch (error) {
-                console.error('Erreur lors de la mise à jour de la météo:', error);
+        if (!screen) return;
+        for (const user of screen.users) {
+            const userId = user.user?._id || user.user;
+            for (const adminSocketId of socketUtils.getAdminSocketIdsForUser(userId)) {
+                const adminSocket = io.sockets.sockets.get(adminSocketId);
+                if (adminSocket) {
+                    adminSocket.emit('server_forward_client_response_to_admin', data);
+                }
             }
-        } else {
-            console.log('Écran non trouvé dans la base de données', screenId);
-            socket.emit('error', 'Écran non trouvé dans la base de données');
         }
-    });
+    }));
 
-    socket.on('update_config', async (data) => {
-        console.log('update_config', data);
-        try {
-            const {screenId} = data;
-            const screen = await Screen.findById(screenId);
-            if (screen) {
-                await socketUtils.associateScreenSocket(screenId, socket.id);
-                await Screen.findByIdAndUpdate(screenId, {status: "online"});
-                socket.emit('config_updated', screen);
-                screen.users.forEach(async (user) => {
-                    const socketId = await socketUtils.getAdminSocketId(user.user._id);
-                    if (socketId) {
-                        const socket = io.sockets.sockets.get(socketId);
-                        if (socket) {
-                            socket.emit('screen_status', {screenId, status: "online"});
-                        }
-                    }
-                });
-            } else {
-                console.log('Écran non trouvé dans la base de données', screenId);
-                socket.emit('error', 'Écran non trouvé dans la base de données');
-            }
-        } catch (error) {
-            console.error('Erreur lors de la récupération de la configuration:', error);
-            socket.emit('error', 'Erreur lors de la récupération de la configuration');
+    socket.on('askDebug', safeHandler(async (screenPayload) => {
+        const parsed = typeof screenPayload === 'string' ? JSON.parse(screenPayload) : screenPayload;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            return;
         }
+        await socketUtils.associateSocketDebug(socket.id, {
+            _id: typeof parsed._id === 'string' ? parsed._id : null,
+            name: typeof parsed.name === 'string' ? parsed.name : 'debug'
+        });
         await socketUtils.emitSocketListToAllAdmins();
-    });
-    socket.on('client_control_response', async (data) => {
-        console.log('client_control_response', data);
-        const [screenId, debugScreen] = await socketUtils.getScreenId(socket.id);
+    }));
+
+    socket.on('disconnect', safeHandler(async () => {
+        const screenId = socketUtils.removeSocketId(socket.id);
         if (screenId) {
-            const screen = await Screen.findById(screenId);
-            if (screen) {
-                screen.users.forEach(async (user) => {
-                    const socketId = await socketUtils.getAdminSocketId(user.user._id);
-                    if (socketId) {
-                        const socket = io.sockets.sockets.get(socketId);
-                        if (socket) {
-                            socket.emit('server_forward_client_response_to_admin', data);
-                        }
-                    }
-                    socketUtils.emitToAllAdmins('server_forward_client_response_to_admin', data);
-                });
-            }
-        }
-    });
-
-    socket.on('askDebug', async (screen) => {
-        await socketUtils.associateSocketDebug(socket.id, JSON.parse(screen));
-        await socketUtils.emitSocketListToAllAdmins();
-    });
-
-
-    socket.on('disconnect', async () => {
-        try {
-            const screenId = await socketUtils.removeSocketId(socket.id);
-            if (screenId) {
-                await Screen.findByIdAndUpdate(screenId, {status: "offline"});
-                console.log('Screen disconnected:', screenId);
-            }
-            const screen = await Screen.findById(screenId);
-            if (screen) {
-                screen.users.forEach(async (user) => {
-                    const socketId = await socketUtils.getAdminSocketId(user.user._id);
-                    if (socketId) {
-                        const socket = io.sockets.sockets.get(socketId);
-                        if (socket) {
-                            socket.emit('screen_status', {screenId, status: "offline"});
-                        }
-                    }
-                });
-            }
-        } catch (error) {
-            console.error('ecran non trouvé', error)
+            console.log('Screen disconnected:', screenId);
+            await markScreenOfflineIfUnused(screenId);
         }
         await socketUtils.emitSocketListToAllAdmins();
-    });
+    }));
 
-    socket.conn.on('pingTimeout', async () => {
-        const screenId = await socketUtils.removeSocketId(socket.id);
+    socket.conn.on('pingTimeout', safeHandler(async () => {
+        const screenId = socketUtils.removeSocketId(socket.id);
         if (screenId) {
-            await Screen.findByIdAndUpdate(screenId, {status: "offline"});
+            await markScreenOfflineIfUnused(screenId);
         }
         await socketUtils.emitSocketListToAllAdmins();
-    });
+    }));
 };

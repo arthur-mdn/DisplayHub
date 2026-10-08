@@ -11,6 +11,7 @@ import {FaArrowRotateLeft, FaKeyboard, FaMobileScreenButton, FaRightToBracket} f
 import Pub from "./components/Pub.jsx";
 import {deleteDatabases} from "./utils/cacheUtils";
 import DisplayImage from "./components/DisplayImage.jsx";
+import TextTicker from "./components/TextTicker.jsx";
 
 function App() {
     const [code, setCode] = useState('');
@@ -26,30 +27,79 @@ function App() {
     const [socketId, setSocketId] = useState(null);
 
     useEffect(() => {
+        document.body.classList.toggle('dark-mode', Boolean(isDarkModeActive));
+        return () => document.body.classList.remove('dark-mode');
+    }, [isDarkModeActive]);
+
+    useEffect(() => {
         let savedConfig = localStorage.getItem('screenConfig');
+        if (savedConfig) {
+            try {
+                const parsed = JSON.parse(savedConfig);
+                if (!parsed.deviceToken) {
+                    localStorage.removeItem('screenConfig');
+                    savedConfig = null;
+                }
+            } catch {
+                localStorage.removeItem('screenConfig');
+                savedConfig = null;
+            }
+        }
+
         const socket = io(`${config.serverUrl}`, {
             reconnectionAttempts: 1500, reconnectionDelay: 1000,
         });
 
         let intervalId;
+        let currentScreenId = null;
+        let currentDeviceToken = null;
+
+        const clearWeatherInterval = () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+        };
+
+        const startWeatherInterval = (screenId, deviceToken, hasMeteo) => {
+            clearWeatherInterval();
+            if (!hasMeteo || !screenId || !deviceToken) return;
+            intervalId = setInterval(() => {
+                socket.emit('update_weather', {screenId, deviceToken});
+            }, 3600000);
+        };
+
+        const piFetch = (path, options = {}) => {
+            const localToken = localStorage.getItem('piApiToken');
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(options.headers || {}),
+                ...(localToken ? {Authorization: `Bearer ${localToken}`} : {})
+            };
+            return fetch(`${config.piServerUrl}${path}`, {
+                ...options,
+                headers
+            });
+        };
 
         socket.on('connect', () => {
             setSocketId(socket.id);
             setShowOffline(false);
             if (savedConfig) {
                 const parsedConfig = JSON.parse(savedConfig);
+                currentScreenId = parsedConfig._id;
+                currentDeviceToken = parsedConfig.deviceToken;
                 setStatus('updating_config');
-                console.log('Updating config...')
-                socket.emit('update_config', {screenId: parsedConfig._id});
-                // if meteo weatherId is set, update weather data
+                socket.emit('update_config', {
+                    screenId: parsedConfig._id,
+                    deviceToken: parsedConfig.deviceToken
+                });
                 if (parsedConfig.meteo && parsedConfig.meteo.weatherId) {
-                    socket.emit('update_weather', {screenId: parsedConfig._id});
-                    if (!intervalId) {
-                        intervalId = setInterval(() => {
-                            console.log("refreshing weather");
-                            socket.emit('update_weather', {screenId: parsedConfig._id});
-                        }, 3600000); // 3600000 ms = 1 heure
-                    }
+                    socket.emit('update_weather', {
+                        screenId: parsedConfig._id,
+                        deviceToken: parsedConfig.deviceToken
+                    });
+                    startWeatherInterval(parsedConfig._id, parsedConfig.deviceToken, true);
                 }
             } else {
                 setStatus('requesting_code');
@@ -58,20 +108,22 @@ function App() {
         });
 
         socket.on('config_updated', async (updatedConfig) => {
-            localStorage.setItem('screenConfig', JSON.stringify(updatedConfig));
-            setConfigData(updatedConfig);
-            savedConfig = JSON.stringify(updatedConfig);
-            console.log('Config updated:', updatedConfig)
+            const previous = savedConfig ? JSON.parse(savedConfig) : {};
+            const merged = {
+                ...updatedConfig,
+                deviceToken: updatedConfig.deviceToken || previous.deviceToken || currentDeviceToken
+            };
+            localStorage.setItem('screenConfig', JSON.stringify(merged));
+            setConfigData(merged);
+            savedConfig = JSON.stringify(merged);
+            currentScreenId = merged._id;
+            currentDeviceToken = merged.deviceToken;
             setStatus('configured');
             setShowUpdateIcon(true);
             setTimeout(() => setShowUpdateIcon(false), 5000);
 
-            if (!intervalId) {
-                intervalId = setInterval(() => {
-                    console.log("refreshing weather");
-                    socket.emit('update_weather', {screenId: parsedConfig._id});
-                }, 3600000); // 3600000 ms = 1 heure
-            }
+            const hasMeteo = Boolean(merged.meteo && (merged.meteo.weatherId || merged.meteo));
+            startWeatherInterval(merged._id, merged.deviceToken, hasMeteo);
         });
 
         socket.on('receive_code', (uniqueCode) => {
@@ -88,6 +140,9 @@ function App() {
             localStorage.removeItem('screenConfig');
             setConfigData(null);
             savedConfig = null;
+            currentScreenId = null;
+            currentDeviceToken = null;
+            clearWeatherInterval();
             setStatus('requesting_code');
             socket.emit('request_code');
             setShowUpdateIcon(true);
@@ -119,10 +174,27 @@ function App() {
             }
         });
 
-        socket.on('error', (error) => {
-            console.error('Socket error:', error);
+        const resetToPairing = async (reason) => {
+            console.warn('Device auth required:', reason);
+            localStorage.removeItem('screenConfig');
+            savedConfig = null;
+            currentScreenId = null;
+            currentDeviceToken = null;
+            clearWeatherInterval();
+            setConfigData(null);
+            setStatus('requesting_code');
+            socket.emit('request_code');
+            await deleteDatabases();
+        };
+
+        socket.on('device_auth_required', async (payload) => {
+            await resetToPairing(payload?.reason || 'unknown');
+        });
+
+        socket.on('client_error', (error) => {
+            console.error('Socket client_error:', error);
             setStatus('error');
-            setError(error);
+            setError(typeof error === 'string' ? error : (error?.message || 'Erreur'));
             socket.emit('askDebug', savedConfig);
             if (savedConfig) {
                 setConfigData(JSON.parse(savedConfig));
@@ -130,8 +202,15 @@ function App() {
         });
 
         socket.on('adminChangeScreenId', (data) => {
-            localStorage.setItem('screenConfig', JSON.stringify({'_id':data}));
-            window.location.reload();
+            if (data && data._id && data.deviceToken) {
+                localStorage.setItem('screenConfig', JSON.stringify({
+                    _id: data._id,
+                    deviceToken: data.deviceToken
+                }));
+                window.location.reload();
+                return;
+            }
+            console.error('adminChangeScreenId payload invalide');
         });
 
         socket.on('refresh', () => {
@@ -139,29 +218,20 @@ function App() {
         });
 
         socket.on('server_send_control_to_client', async (data) => {
-            console.log('server_send_control_to_client', data);
             let availableCommands = [];
             let defaultValues = {};
             let appVersion = null;
 
             try {
-                const response = await fetch('http://localhost:3002');
+                const response = await piFetch('/');
                 if (response.ok) {
-                    const data = await response.json();
-                    availableCommands = data.availableCommands;
-                    defaultValues = data.defaultValues;
-                    appVersion = data.appVersion;
-
-                    if (appVersion && availableCommands.length > 0) {
-                        console.log('Advanced commands available, app version:', appVersion);
-                    } else {
-                        console.log('App version not found, using basic commands');
-                    }
-                } else {
-                    console.error('Failed to fetch from localhost:3002, response status:', response.status);
+                    const payload = await response.json();
+                    availableCommands = payload.availableCommands;
+                    defaultValues = payload.defaultValues;
+                    appVersion = payload.appVersion;
                 }
             } catch (error) {
-                console.error('Error while fetching localhost:3002:', error);
+                console.error('Error while fetching pi-server:', error);
             }
 
             if (!availableCommands.includes('refresh')) {
@@ -175,7 +245,7 @@ function App() {
                 socket.emit('client_control_response', {
                     commandId: data.commandId,
                     command: data.command,
-                    response: "Commands retrieved",
+                    response: 'Commands retrieved',
                     appVersion,
                     availableCommands,
                     defaultValues
@@ -194,11 +264,7 @@ function App() {
                     return;
                 }
                 socket.emit('client_control_response', {commandId: data.commandId, response: 'Rebooting...'});
-                const response = await fetch('http://localhost:3002/execute', {
-                    method: 'POST', headers: {
-                        'Content-Type': 'application/json',
-                    }, body: JSON.stringify({command: 'reboot'}),
-                });
+                await piFetch('/execute', {method: 'POST', body: JSON.stringify({command: 'reboot'})});
             } else if (data.command === 'shutdown') {
                 if (!availableCommands.includes('shutdown')) {
                     socket.emit('client_control_response', {
@@ -207,11 +273,7 @@ function App() {
                     return;
                 }
                 socket.emit('client_control_response', {commandId: data.commandId, response: 'Shutting down...'});
-                const response = await fetch('http://localhost:3002/execute', {
-                    method: 'POST', headers: {
-                        'Content-Type': 'application/json',
-                    }, body: JSON.stringify({command: 'shutdown'}),
-                });
+                await piFetch('/execute', {method: 'POST', body: JSON.stringify({command: 'shutdown'})});
             } else if (data.command === 'update') {
                 if (!availableCommands.includes('update')) {
                     socket.emit('client_control_response', {
@@ -219,10 +281,9 @@ function App() {
                     });
                     return;
                 }
-                const response = await fetch('http://localhost:3002/execute', {
-                    method: 'POST', headers: {
-                        'Content-Type': 'application/json',
-                    }, body: JSON.stringify({command: 'update'}),
+                const response = await piFetch('/execute', {
+                    method: 'POST',
+                    body: JSON.stringify({command: 'update'})
                 });
                 const responseData = await response.json();
                 socket.emit('client_control_response', {commandId: data.commandId, response: responseData.message});
@@ -233,10 +294,9 @@ function App() {
                     });
                     return;
                 }
-                const response = await fetch('http://localhost:3002/execute', {
-                    method: 'POST', headers: {
-                        'Content-Type': 'application/json',
-                    }, body: JSON.stringify({command: 'brightness', value: data.value}),
+                const response = await piFetch('/execute', {
+                    method: 'POST',
+                    body: JSON.stringify({command: 'brightness', value: data.value})
                 });
                 const responseData = await response.json();
                 socket.emit('client_control_response', {
@@ -247,11 +307,9 @@ function App() {
             } else {
                 socket.emit('client_control_response', {commandId: data.commandId, error: 'Command not found'});
             }
-        })
+        });
         return () => {
-            if (intervalId) {
-                clearInterval(intervalId);
-            }
+            clearWeatherInterval();
             socket.disconnect();
         };
     }, []);
@@ -423,38 +481,16 @@ function App() {
     }
 
     return (<div className={`App`}>
-        {(configData && isDarkModeActive) && <style>
-            {`
-                body, html, #root{
-                  color: white;
-                  background-color: rgb(32, 35, 37);
-                }
-                .card{
-                  color: white;
-                  background-color: rgb(24, 26, 27);
-                }
-                img[alt="Flèche"]{
-                  filter: invert(1);
-                }
-              `}
-        </style>}
         {renderContent()}
 
-        {(configData && textSlide) && (<div className="messagedefilant" style={{
-            backgroundColor: textSlide.backgroundColor,
-            color: textSlide.textColor
-        }}>
-            <div>
-                {textSlide.text + " " + textSlide.text} {/* Duplication du texte */}
-            </div>
-            <style>
-                {`
-                .messagedefilant div {
-                  animation: scrollText ${textSlide.slideTime / 2}s linear infinite;
-                }
-              `}
-            </style>
-        </div>)}
+        {(configData && textSlide) && (
+            <TextTicker
+                text={textSlide.text}
+                backgroundColor={textSlide.backgroundColor}
+                textColor={textSlide.textColor}
+                slideTime={textSlide.slideTime}
+            />
+        )}
 
     </div>);
 }

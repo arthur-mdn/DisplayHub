@@ -18,14 +18,17 @@ function TimeViewer() {
     const moisEnCours = mois[currentTime.getMonth()];
     const anneeEnCours = currentTime.getFullYear();
 
-    const heures = currentTime.getHours();
+    const heures = currentTime.getHours().toString().padStart(2, '0');
     const minutes = currentTime.getMinutes().toString().padStart(2, '0');
-    const secondes = currentTime.getSeconds().toString().padStart(2, '0');
 
     return (
-        <div className={"card time"} style={{flexDirection:"column", gap:0, padding:' 1vw 1.5vw'}}>
-            <p style={{fontWeight:"bold"}}>{`${jourDeLaSemaine} ${jourDuMois} ${moisEnCours} ${anneeEnCours}`}</p>
-            <p style={{fontWeight:"bold"}}>{`${heures}h${minutes}:${secondes}`}</p>
+        <div className="display-time">
+            <div className="display-time__date">
+                <p className="display-time__weekday">{jourDeLaSemaine}</p>
+                <p className="display-time__fulldate">{`${jourDuMois} ${moisEnCours} ${anneeEnCours}`}</p>
+            </div>
+            <div className="display-header__sep" aria-hidden="true"/>
+            <p className="display-time__clock">{`${heures}:${minutes}`}</p>
         </div>
     );
 }
