@@ -20,22 +20,27 @@ function Screen({configData, isDarkModeActive}) {
                 <title>{configData.name}</title>
             </Helmet>
 
-            <header className="display-header">
+            <header className="display-header" data-has-icons={hasIcons ? "true" : "false"}>
                 <div className="display-header__left">
                     {configData.logo && (
                         <DisplayLogo logo={configData.logo} isDarkModeActive={isDarkModeActive}/>
                     )}
                 </div>
 
-                <div className="display-header__center">
-                    <TimeViewer/>
-                </div>
-
-                <div className="display-header__right">
-                    {hasIcons && (
-                        <DisplayIcons icons={configData.icons} isDarkModeActive={isDarkModeActive}/>
-                    )}
-                </div>
+                {hasIcons ? (
+                    <>
+                        <div className="display-header__center">
+                            <TimeViewer/>
+                        </div>
+                        <div className="display-header__right">
+                            <DisplayIcons icons={configData.icons} isDarkModeActive={isDarkModeActive}/>
+                        </div>
+                    </>
+                ) : (
+                    <div className="display-header__right">
+                        <TimeViewer/>
+                    </div>
+                )}
             </header>
 
             <main

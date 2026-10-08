@@ -10,8 +10,8 @@ function ConfigManager({ screen, initialConfig, onConfigChange, onRemoveScreenSe
     const [isLoading, setIsLoading] = useState(false);
     const configToText = {
         "photos_interval": "Intervalle de changement des photos",
-        "hide_slider_dots": "Masquer les points de navigation du slider",
-        "meteo_corner": "Position du widget météo sur le slider",
+        "hide_slider_dots": "Masquer les points de navigation des photos",
+        "meteo_corner": "Position du widget météo",
     }
     const meteoCornerLabels = {
         "top-left": "Haut gauche",

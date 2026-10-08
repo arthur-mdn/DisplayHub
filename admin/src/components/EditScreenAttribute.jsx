@@ -225,7 +225,7 @@ function EditScreenAttribute({ screen, screenId, attribute, value, onSave, input
                     )}
                 </div>
                 <div className={"fc g0-5"}>
-                    <label htmlFor="meteo-corner">Position sur le slider photo</label>
+                    <label htmlFor="meteo-corner">Position du widget météo</label>
                     <select
                         id="meteo-corner"
                         value={meteoCorner}

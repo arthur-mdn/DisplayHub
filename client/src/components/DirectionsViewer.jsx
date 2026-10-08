@@ -1,4 +1,5 @@
 import {useLayoutEffect, useRef, useState} from "react";
+import MeteoViewer from "./MeteoViewer.jsx";
 
 function DirectionsViewer({screen}) {
     const directionsRef = useRef(null);
@@ -7,6 +8,11 @@ function DirectionsViewer({screen}) {
     const [shouldScroll, setShouldScroll] = useState(false);
     const count = screen.directions?.length || 0;
     const hasPhotos = screen.photos?.length > 0;
+    const hasMeteo = Boolean(screen.meteo && Object.keys(screen.meteo.data || {}).length > 0);
+    const showMeteoOverlay = hasMeteo && !hasPhotos;
+    const meteoEdge = String(screen.config?.meteo_corner || 'top-left').startsWith('bottom')
+        ? 'bottom'
+        : 'top';
 
     const updateHeight = () => {
         if (directionsRef.current && containerRef.current) {
@@ -82,6 +88,11 @@ function DirectionsViewer({screen}) {
                     </div>
                 ))}
             </div>
+            {showMeteoOverlay && (
+                <div className="display-meteo-card" data-edge={meteoEdge}>
+                    <MeteoViewer screen={screen}/>
+                </div>
+            )}
         </div>
     );
 }

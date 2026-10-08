@@ -1203,6 +1203,10 @@ body, html, #root {
     flex-shrink: 0;
 }
 
+.display-header[data-has-icons="false"] {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .display-header__left {
     display: flex;
     align-items: center;
@@ -1509,7 +1513,8 @@ body, html, #root {
     left: 1vw;
 }
 
-.display-meteo-card[data-corner="top-right"] {
+.display-meteo-card[data-corner="top-right"],
+.display-meteo-card[data-edge="top"] {
     top: 1vw;
     right: 1vw;
 }
@@ -1519,7 +1524,8 @@ body, html, #root {
     left: 1vw;
 }
 
-.display-meteo-card[data-corner="bottom-right"] {
+.display-meteo-card[data-corner="bottom-right"],
+.display-meteo-card[data-edge="bottom"] {
     bottom: 1vw;
     right: 1vw;
 }
@@ -1819,6 +1825,10 @@ body.dark-mode img[alt="Flèche"] {
     .display-header__right {
         width: 100%;
         justify-content: flex-start;
+    }
+
+    .display-header[data-has-icons="false"] .display-header__right {
+        justify-content: flex-end;
     }
 
     .display-header__center {
