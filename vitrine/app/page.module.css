@@ -69,7 +69,7 @@
 
 .brandWord {
   font-size: clamp(2.4rem, 5.5vw, 4.2rem);
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: -0.04em;
   line-height: 0.95;
   color: var(--dh-blue-deep);
@@ -219,28 +219,17 @@
 }
 
 .featureAside {
-  min-height: 10rem;
+  min-width: 0;
+}
+
+.featureImage {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.featureImageRounded {
   border-radius: var(--dh-radius);
-  border: 1px solid rgba(15, 27, 45, 0.08);
-}
-
-.featureAside[data-tone="directions"] {
-  background:
-    linear-gradient(90deg, transparent 12%, rgba(26, 95, 255, 0.08) 12% 13%, transparent 13%),
-    linear-gradient(#fff, #f3f6fb);
-  box-shadow: inset 0 -2.5rem 0 #fff;
-}
-
-.featureAside[data-tone="gallery"] {
-  background:
-    linear-gradient(135deg, rgba(11, 61, 145, 0.7), rgba(26, 95, 255, 0.45)),
-    #3d5f9a;
-}
-
-.featureAside[data-tone="control"] {
-  background:
-    radial-gradient(circle at 70% 40%, rgba(26, 95, 255, 0.25), transparent 35%),
-    linear-gradient(180deg, #f8fafc, #e7eef8);
 }
 
 .steps {
@@ -448,10 +437,6 @@
 
   .featureRow {
     grid-template-columns: 1fr;
-  }
-
-  .featureAside {
-    min-height: 8rem;
   }
 }
 

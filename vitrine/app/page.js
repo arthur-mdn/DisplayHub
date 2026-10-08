@@ -188,7 +188,15 @@ export default function Home() {
                                     en glisser-déposer.
                                 </p>
                             </div>
-                            <div className={styles.featureAside} data-tone="directions"/>
+                            <div className={styles.featureAside}>
+                                <Image
+                                    src={"/directions.webp"}
+                                    alt="Aperçu des directions DisplayHub"
+                                    width={900}
+                                    height={700}
+                                    className={`${styles.featureImage} ${styles.featureImageRounded}`}
+                                />
+                            </div>
                         </div>
                         <div className={styles.featureRow}>
                             <div className={styles.featureCopy}>
@@ -198,7 +206,15 @@ export default function Home() {
                                     où il reste utile, sans encombrer la lecture.
                                 </p>
                             </div>
-                            <div className={styles.featureAside} data-tone="gallery"/>
+                            <div className={styles.featureAside}>
+                                <Image
+                                    src={"/galerie-meteo.webp"}
+                                    alt="Aperçu galerie et météo DisplayHub"
+                                    width={900}
+                                    height={700}
+                                    className={styles.featureImage}
+                                />
+                            </div>
                         </div>
                         <div className={styles.featureRow}>
                             <div className={styles.featureCopy}>
@@ -209,7 +225,15 @@ export default function Home() {
                                     affichage.
                                 </p>
                             </div>
-                            <div className={styles.featureAside} data-tone="control"/>
+                            <div className={styles.featureAside}>
+                                <Image
+                                    src={"/multiecran.webp"}
+                                    alt="Aperçu multi-écrans DisplayHub"
+                                    width={900}
+                                    height={700}
+                                    className={`${styles.featureImage} ${styles.featureImageRounded}`}
+                                />
+                            </div>
                         </div>
                     </div>
                 </section>
