@@ -13,8 +13,8 @@ const montserrat = localFont({
 });
 
 export const metadata = {
-    title: 'DisplayHub',
-    description: "DisplayHub, une solution de gestion d'affichage dynamique."
+    title: 'DisplayHub | Affichage dynamique en bêta',
+    description: "DisplayHub pilote vos écrans d'affichage dynamique : directions, météo, photos et messages. Encore en bêta, accès anticipé ouvert."
 };
 
 export const viewport = {
