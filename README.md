@@ -25,18 +25,6 @@ Production (Traefik labels, Mongo auth, no host Mongo port):
 docker compose -f docker-compose.prod.yml up --build -d
 ```
 
-If the prod Mongo volume already existed **without** auth, create the root user once before enabling authorization (same idea as Noctivibe). Use the bootstrap compose **alone** (do not merge it with prod):
-
-```bash
-# see docs/mongo-auth-migration.md
-docker compose -f docker-compose.prod.yml down
-docker compose -f docker-compose.prod.mongo-bootstrap.yml up -d
-set -a && source .env && set +a
-./scripts/bootstrap-existing-mongo-auth.sh
-docker compose -f docker-compose.prod.mongo-bootstrap.yml down
-docker compose -f docker-compose.prod.yml up -d
-```
-
 ### Mongo backup / restore
 
 ```bash
