@@ -113,9 +113,9 @@ function PhotosManager({ screenId, initialPhotos, onPhotosChange }) {
                                             ref={provided.innerRef}
                                             {...provided.draggableProps}
                                             {...provided.dragHandleProps}
-                                            className={"fr ai-c g1 pr"}
+                                            className={"admin-photo-card pr"}
                                         >
-                                            <DisplayImage image={photo} alt={`Icon ${index}`} width={'150px'}/>
+                                            <DisplayImage image={photo} alt={`Photo ${index}`} width={'150px'} className="admin-photo-card__img"/>
                                             <button type={"button"} className={"actionButton quickDel"}
                                                     onClick={() => handleDelete(photo._id)}><FaTimes size={12}/></button>
                                         </div>
