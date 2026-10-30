@@ -1,6 +1,10 @@
+const {verify} = require('jsonwebtoken');
 const Screen = require('../../models/Screen');
 const User = require('../../models/User');
 const {sanitizeScreen} = require('../../others/sanitizeScreen');
+const config = require('../../others/config');
+
+const INACTIVE_USER_STATUSES = ['disabled', 'pending', 'blocked'];
 
 let io = null;
 const socketMap = {};
@@ -112,17 +116,56 @@ const removeAdminSocketId = (socketId) => {
     return null;
 };
 
+const revokeAdminSocket = (socketId) => {
+    const socket = io?.sockets.sockets.get(socketId);
+    delete adminSocketMap[socketId];
+    if (socket) {
+        socket.emit('session_revoked');
+        socket.disconnect(true);
+    }
+};
+
 const disconnectAdminSocketsForUser = (adminId) => {
     if (!io) return;
     for (const socketId of getAdminSocketIdsForUser(adminId)) {
-        const socket = io.sockets.sockets.get(socketId);
-        delete adminSocketMap[socketId];
-        if (socket) {
-            socket.emit('session_revoked');
-            socket.disconnect(true);
-        }
+        revokeAdminSocket(socketId);
     }
 };
+
+function getSessionTokenFromSocket(socket) {
+    const cookies = socket?.handshake?.headers?.cookie || '';
+    return cookies.split('; ').find((row) => row.startsWith('session_token='))?.split('=')[1] || null;
+}
+
+async function isActiveSuperAdminSocket(socketId, userId) {
+    const socket = io?.sockets.sockets.get(socketId);
+    if (!socket) return false;
+
+    const sessionToken = getSessionTokenFromSocket(socket);
+    if (!sessionToken) return false;
+
+    let decoded;
+    try {
+        decoded = verify(sessionToken, config.secretKey);
+    } catch {
+        return false;
+    }
+
+    if (!decoded?.userId || decoded.userId.toString() !== userId.toString()) {
+        return false;
+    }
+    if (!decoded.exp || decoded.exp * 1000 <= Date.now()) {
+        return false;
+    }
+
+    const user = await User.findById(userId).select('userRole status tokenVersion');
+    if (!user) return false;
+    if (user.userRole !== 'superadmin') return false;
+    if (user.status && INACTIVE_USER_STATUSES.includes(user.status)) return false;
+    if ((user.tokenVersion || 0) !== (decoded.tokenVersion ?? 0)) return false;
+
+    return true;
+}
 
 const getSocketId = (lookingForThisScreenId, {includeDebug = false} = {}) => {
     const id = lookingForThisScreenId?.toString?.() || lookingForThisScreenId;
@@ -291,17 +334,26 @@ async function getAdminSocketList() {
 
 async function getSuperAdminSocketIds() {
     const ids = [];
+    const revokedIds = [];
+
     for (const socketId of Object.keys(adminSocketMap)) {
         const userId = adminSocketMap[socketId];
         try {
-            const user = await User.findById(userId).select('userRole');
-            if (user && user.userRole === 'superadmin') {
+            if (await isActiveSuperAdminSocket(socketId, userId)) {
                 ids.push(socketId);
+            } else {
+                revokedIds.push(socketId);
             }
         } catch (error) {
             console.error('Erreur superadmin check:', error);
+            revokedIds.push(socketId);
         }
     }
+
+    for (const socketId of revokedIds) {
+        revokeAdminSocket(socketId);
+    }
+
     return ids;
 }
 

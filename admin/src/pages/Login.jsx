@@ -7,7 +7,7 @@ import {useCookies} from "react-cookie";
 
 function Login() {
     const { screenId } = useParams();
-    const { setAuthStatus } = useAuth();
+    const { refreshUser } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
@@ -21,9 +21,7 @@ function Login() {
 
     const login = (email, password) => {
         axios.post(`${config.serverUrl}/auth/login`, { email, password }, { withCredentials: true })
-            .then(response => {
-                setAuthStatus("authenticated");
-            })
+            .then(() => refreshUser())
             .catch(error => {
                 if (error.response) {
                     setErrorMessage(error.response.data.message || 'Erreur de connexion');

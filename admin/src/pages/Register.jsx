@@ -5,7 +5,7 @@ import {useAuth} from "../AuthContext.jsx";
 import config from "../config.js";
 
 function Register() {
-    const { setAuthStatus } = useAuth();
+    const { refreshUser } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [lastName, setLastName] = useState('');
@@ -21,8 +21,8 @@ function Register() {
             lastName,
             firstName
         }, { withCredentials: true })
-            .then(response => {
-                setAuthStatus("authenticated");
+            .then(async () => {
+                await refreshUser();
                 navigate('/');
             })
             .catch(error => {
