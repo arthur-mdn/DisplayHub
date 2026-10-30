@@ -5,3 +5,9 @@ npm-debug.log
 .DS_Store
 uploads/*
 !uploads/.gitkeep
+datas/city.list.json
+datas/villesFR.json
+README.md
+extract_fr_cities.js
+Dockerfile
+Dockerfile.dev

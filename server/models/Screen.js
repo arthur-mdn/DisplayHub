@@ -218,7 +218,7 @@ const screenSchema = new Schema({
     }
 });
 
-screenSchema.pre('save', async function (next) {
+screenSchema.pre('save', async function () {
     if (!this.featured_image) {
         const defaultFeaturedImage = await Image.findOne({system: 'default-featured-image'});
         if (defaultFeaturedImage) {
@@ -235,11 +235,10 @@ screenSchema.pre('save', async function (next) {
             this.featured_image = newFeaturedImage._id;
         }
     }
-    next();
 });
 
 
-screenSchema.pre(/^find/, function (next) {
+screenSchema.pre(/^find/, function () {
     this.populate('logo')
         .populate('featured_image')
         .populate('photos')
@@ -247,7 +246,6 @@ screenSchema.pre(/^find/, function (next) {
         .populate('meteo')
         .populate('text_slides')
         .populate('dark_mode');
-    next();
 });
 
 

@@ -1,6 +1,5 @@
 require('dotenv').config();
 const express = require('express');
-const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const http = require('http');
@@ -39,7 +38,7 @@ async function start() {
     });
     socketUtils.setIo(io);
 
-    app.use(bodyParser.json());
+    app.use(express.json());
 
     app.use(cors((req, callback) => {
         const origin = req.header('Origin');

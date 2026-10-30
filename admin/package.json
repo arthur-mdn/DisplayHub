@@ -15,7 +15,7 @@
     "date-fns": "^4.4.0",
     "dotenv": "^18.0.9",
     "framer-motion": "^14.8.0",
-    "html5-qrcode": "^2.3.8",
+    "@zxing/browser": "^0.2.1",
     "lucide-react": "^1.65.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.3.1",

@@ -658,20 +658,6 @@ button.decrement {
     border-radius: 15px;
 }
 
-#html5-qrcode-select-camera {
-    background-color: #474747;
-    color: #b5b5b5;
-}
-
-#qr-code-reader__dashboard_section_csr div button {
-    margin: auto;
-}
-
-#qr-code-reader {
-    border: 0 !important;
-}
-
-
 .loader {
     width: 48px;
     height: 48px;
@@ -1115,44 +1101,6 @@ body {
 }
 
 
-#html5-qrcode-button-camera-stop, #html5-qrcode-button-camera-start, #html5-qrcode-select-camera, #html5-qrcode-button-camera-permission, #html5-qrcode-button-file-selection {
-    background-color: #1a1a1a;
-    color: #b5b5b5;
-    border: 0;
-    margin-top: 15px;
-}
-
-#qr-code-reader__dashboard_section_csr {
-    color: dimgrey;
-}
-
-#qr-code-reader__dashboard {
-    height: 100%;
-}
-
-#qr-code-reader__dashboard_section {
-    margin-top: 10%;
-}
-
-#html5-qrcode-select-camera {
-    width: auto;
-    display: block;
-    margin: auto;
-}
-
-#html5-qrcode-anchor-scan-type-change {
-    margin-top: 5px;
-}
-
-#html5-qrcode-anchor-scan-type-change {
-    color: dimgrey;
-}
-
-#qr-code-reader img[alt="Info icon"] {
-    display: none;
-}
-
-
 .card {
     background-color: var(--dh-surface);
     border-radius: var(--dh-radius);
@@ -1559,21 +1507,21 @@ body.dark-mode .display-meteo-card .display-meteo__city {
     width: 100%;
 }
 
-.display-gallery .slick-slider,
-.display-gallery .slick-list,
-.display-gallery .slick-track,
-.display-gallery .slick-slide,
-.display-gallery .slick-slide > div {
-    height: 100% !important;
-}
-
-.display-gallery .slick-list {
+.display-gallery__viewport {
+    width: 100%;
+    height: 100%;
     overflow: hidden;
     border-radius: var(--dh-radius);
 }
 
+.display-gallery__container {
+    display: flex;
+    height: 100%;
+}
+
 .display-gallery__slide {
-    width: 100%;
+    flex: 0 0 100%;
+    min-width: 0;
     height: 100%;
 }
 
@@ -1584,66 +1532,60 @@ body.dark-mode .display-meteo-card .display-meteo__city {
     display: block;
 }
 
-.display-gallery .slick-dots {
+.display-gallery__dots {
     position: absolute;
     bottom: 0.9vw;
     left: 0;
     right: 0;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: flex !important;
+    display: flex;
     justify-content: center;
     gap: 0.4vw;
     z-index: 3;
     pointer-events: none;
 }
 
-.display-gallery .slick-dots li {
-    margin: 0;
-    width: auto;
-    height: auto;
-}
-
-.display-gallery .slick-dots li button {
+button[type=button].display-gallery__dot {
     width: 0.55vw;
     height: 0.55vw;
-    min-width: 6px;
-    min-height: 6px;
+    min-width: 8px;
+    min-height: 8px;
+    max-width: 12px;
+    max-height: 12px;
     padding: 0;
-    border-radius: 999px;
+    margin: 0;
+    border: 0;
+    border-radius: 50%;
     background: rgba(255, 255, 255, 0.55);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
-    opacity: 1;
-}
-
-.display-gallery .slick-dots li button:before {
-    display: none;
-}
-
-.display-gallery .slick-dots li.slick-active button {
-    background: #ffffff;
-    transform: scale(1.15);
-}
-
-.display-gallery[data-hide-dots="true"] .slick-dots {
-    display: none !important;
-}
-
-.slick-slide {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
     display: block;
-    height: 100% !important;
-    object-fit: cover;
+    flex: 0 0 auto;
+    gap: 0;
+    font-size: 0;
+    line-height: 0;
+    opacity: 1;
+    color: transparent;
+    pointer-events: all;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s;
 }
 
-.slick-slider, .slick-list, .slick-track, .slick-slide, .slick-slide > div, .slick-slide > div > div {
-    height: 100% !important;
+button[type=button].display-gallery__dot:hover,
+button[type=button].display-gallery__dot:focus,
+button[type=button].display-gallery__dot:focus-visible {
+    opacity: 1;
+    color: transparent;
+    border: 0;
+    outline: none;
+    background: rgba(255, 255, 255, 0.85);
 }
 
-.slick-list {
-    overflow: hidden;
-    border-radius: var(--dh-radius);
+button[type=button].display-gallery__dot[data-active="true"] {
+    background: #ffffff;
+    transform: scale(1.2);
+}
+
+.display-gallery[data-hide-dots="true"] .display-gallery__dots {
+    display: none;
 }
 
 body.dark-mode {
