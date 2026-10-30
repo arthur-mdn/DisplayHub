@@ -1,0 +1,23 @@
+[Unit]
+Description=DisplayHub controlled Raspberry Pi OS update
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/
+ExecStart=/usr/local/lib/displayhub/system-update.sh
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+StateDirectory=displayhub-system-update
+StateDirectoryMode=0755
+UMask=0022
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true
+Nice=10
+IOSchedulingClass=idle
+# Do not kill dpkg halfway through an installation. APT handles its lock timeout.
+TimeoutStartSec=infinity
+StandardOutput=journal
+StandardError=journal

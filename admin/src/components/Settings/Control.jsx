@@ -1,5 +1,7 @@
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
 import {useSocket} from "../../SocketContext.jsx";
+import {useAuth} from '../../AuthContext.jsx';
+import Modal from '../Modal.jsx';
 import {v4 as uuidv4} from 'uuid';
 import {toast} from 'react-toastify';
 import {FaPowerOff, FaRegSun, FaSatellite, FaSatelliteDish} from "react-icons/fa";
@@ -7,11 +9,18 @@ import {FaLocationDot, FaRotate, FaRotateLeft, FaSun} from "react-icons/fa6";
 
 export default function Control({ screen }) {
     const socket = useSocket();
+    const {user} = useAuth();
+    const isSystemAdmin = user?.userRole === 'superadmin';
     const [buttonStates, setButtonStates] = useState({});
     const [availableCommands, setAvailableCommands] = useState([]);
     const [actualScreenStatus, setActualScreenStatus] = useState(screen.status);
     const [appVersion, setAppVersion] = useState(null);
     const [brightnessSliderValue, setBrightnessSliderValue] = useState(null);
+    const [systemUpdateChallenge, setSystemUpdateChallenge] = useState(null);
+    const [systemUpdate, setSystemUpdate] = useState(null);
+    const [systemUpdateError, setSystemUpdateError] = useState(null);
+    const commandTimers = useRef(new Map());
+    const systemUpdateBusy = ['starting', 'running'].includes(systemUpdate?.state);
 
     const commands = {
         refresh: {
@@ -51,7 +60,7 @@ export default function Control({ screen }) {
             }
         },
         update: {
-            title: "Mettre à jour l'écran",
+            title: "Mettre à jour l’agent DisplayHub",
             icon: <FaSatellite />,
             command: "update",
             type: "advanced",
@@ -75,9 +84,17 @@ export default function Control({ screen }) {
 
     useEffect(() => {
         if (socket) {
-            socket.on('server_forward_client_response_to_admin', (data) => {
+            const onResponse = (data) => {
+                if (data.screenId && String(data.screenId) !== String(screen._id)) return;
                 console.log('server_forward_client_response_to_admin', data);
                 if (data.commandId) {
+                    clearTimeout(commandTimers.current.get(data.commandId));
+                    commandTimers.current.delete(data.commandId);
+                    if (data.systemUpdateChallenge) setSystemUpdateChallenge(data.systemUpdateChallenge);
+                    if (data.systemUpdate) {
+                        setSystemUpdate(data.systemUpdate);
+                        setSystemUpdateError(null);
+                    }
                     setButtonStates(prevState => {
                         const updatedState = { ...prevState };
                         Object.keys(updatedState).forEach(key => {
@@ -105,25 +122,36 @@ export default function Control({ screen }) {
                                 }
                             });
                         }
-                        if (!data.command || data.command !== 'getAvailableCommands') {
+                        if (!['getAvailableCommands', 'prepareSystemUpdate', 'systemUpdateStatus'].includes(data.command)) {
                             toast.success(`Command successful: ${data.response}`);
                         }
                     } else if (data.error) {
+                        if (data.command === 'systemUpdateStatus') {
+                            setSystemUpdateError(data.error);
+                            return;
+                        }
                         toast.error(`Command failed: ${data.error}`);
                         if (data.error === 'Advanced commands not available') {
-                            setAvailableCommands('basic');
+                            setAvailableCommands(['refresh', 'identify']);
                         }
                     }
                 }
-            });
+            };
+            socket.on('server_forward_client_response_to_admin', onResponse);
 
             return () => {
-                socket.off('server_forward_client_response_to_admin');
+                socket.off('server_forward_client_response_to_admin', onResponse);
+                for (const timer of commandTimers.current.values()) clearTimeout(timer);
+                commandTimers.current.clear();
             };
         }
-    }, [socket]);
+    }, [socket, screen._id]);
 
     const sendControlCommand = (command, value = null) => {
+        if (!socket?.connected) {
+            toast.error('Connexion de contrôle indisponible');
+            return;
+        }
         const commandId = uuidv4();
         setButtonStates(prevState => ({
             ...prevState,
@@ -138,6 +166,11 @@ export default function Control({ screen }) {
         };
         console.log('admin_request_client_control', payload);
         socket.emit('admin_request_client_control', payload);
+        commandTimers.current.set(commandId, setTimeout(() => {
+            commandTimers.current.delete(commandId);
+            setButtonStates(previous => ({...previous, [command]: previous[command] === commandId ? false : previous[command]}));
+            toast.error('Aucune réponse de l’écran ; vérifier son état avant de réessayer');
+        }, 20000));
     };
 
     const handleSliderChange = (e) => {
@@ -149,6 +182,7 @@ export default function Control({ screen }) {
     };
 
     useEffect(() => {
+        if (!socket) return;
         if (actualScreenStatus === 'online') {
             const statusCommandId = uuidv4();
             setButtonStates(prevState => ({
@@ -180,10 +214,21 @@ export default function Control({ screen }) {
         });
 
         return () => {
-            socket.off('server_forward_client_response_to_admin');
             socket.off('screen_status');
         };
     }, [socket, screen._id]);
+
+    useEffect(() => {
+        if (!socket || !isSystemAdmin || actualScreenStatus !== 'online' || !availableCommands.includes('systemUpdateStatus')) return;
+        const requestStatus = () => {
+            if (socket.connected) socket.emit('admin_request_client_control', {
+                screenId: screen._id, command: 'systemUpdateStatus', commandId: uuidv4()
+            });
+        };
+        requestStatus();
+        const timer = setInterval(requestStatus, 10000);
+        return () => clearInterval(timer);
+    }, [socket, screen._id, isSystemAdmin, actualScreenStatus, availableCommands]);
 
     const isCommandAvailable = (command) => {
         return availableCommands.includes(command);
@@ -227,7 +272,7 @@ export default function Control({ screen }) {
             </div>
             <div className={"fc g0-5"}>
                 <h2>Contrôles avancés</h2>
-                {availableCommands.filter(command => commands[command].type === 'advanced').length === 0 && (
+                {availableCommands.filter(command => commands[command]?.type === 'advanced').length === 0 && (
                     <p style={{ color: "red", fontWeight: 'bold' }}>Les contrôles avancés ne sont pas disponibles pour cet écran.</p>
                 )}
                 {availableCommands.length > 0 && appVersion && screen.status === "online" && (
@@ -275,6 +320,35 @@ export default function Control({ screen }) {
                         ))}
                 </div>
             </div>
+            {isSystemAdmin && availableCommands.includes('systemUpdate') && (
+                <div className="fc g0-5">
+                    <h2>Maintenance Raspberry Pi OS</h2>
+                    <p>Met à jour les paquets du système. Des services peuvent être interrompus. Le Pi ne redémarre pas automatiquement.</p>
+                    {systemUpdateError && <p role="alert">État indisponible : {systemUpdateError}</p>}
+                    {systemUpdate && (
+                        <p role="status">
+                            {{idle: 'Aucune mise à jour lancée', starting: 'Démarrage demandé', running: 'Mise à jour en cours',
+                                succeeded: 'Mise à jour terminée', failed: 'Échec de la mise à jour : consulter les journaux du Pi'}[systemUpdate.state]}
+                            {systemUpdate.rebootRequired && ' — un redémarrage est signalé comme nécessaire par le système.'}
+                        </p>
+                    )}
+                    <button type="button" disabled={systemUpdateBusy || buttonStates.prepareSystemUpdate || buttonStates.systemUpdate || actualScreenStatus !== 'online'}
+                        onClick={() => sendControlCommand('prepareSystemUpdate')}>
+                        Préparer la mise à jour système
+                    </button>
+                    <Modal isOpen={Boolean(systemUpdateChallenge)} onClose={() => setSystemUpdateChallenge(null)} title="Confirmer la mise à jour système">
+                        <div className="p1 fc g1">
+                            <p>Lancer la mise à jour de Raspberry Pi OS pour « {screen.name} » ? Prévoir une fenêtre de maintenance : la connexion ou l’affichage peuvent être interrompus.</p>
+                            <p>Les dépôts système existants sont utilisés. Aucun changement de version majeure de l’OS ni redémarrage automatique n’est demandé. Cette confirmation expire après 90 secondes.</p>
+                            <button type="button" onClick={() => {
+                                sendControlCommand('systemUpdate', systemUpdateChallenge);
+                                setSystemUpdateChallenge(null);
+                            }}>Confirmer la mise à jour</button>
+                            <button type="button" onClick={() => setSystemUpdateChallenge(null)}>Annuler</button>
+                        </div>
+                    </Modal>
+                </div>
+            )}
         </div>
     );
 }

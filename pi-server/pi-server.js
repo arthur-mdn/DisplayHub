@@ -3,9 +3,11 @@ const express = require('express');
 const cors = require('cors');
 const {execFile} = require('child_process');
 const config = require('./others/config');
+const {createSystemUpdater} = require('./others/systemUpdate');
+const systemUpdater = createSystemUpdater();
 
 const app = express();
-const appVersion = 'pi-0.0.43';
+const appVersion = 'pi-0.0.44';
 
 app.use(cors({
     origin: config.clientUrl,
@@ -14,6 +16,31 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+function requireTrustedBrowser(req, res, next) {
+    res.set('Cache-Control', 'no-store');
+    if (req.get('Origin') !== config.clientUrl) {
+        return res.status(403).json({error: 'Origine non autorisée'});
+    }
+    next();
+}
+
+const updateEndpoint = (handler) => async (req, res) => {
+    try { await handler(req, res); } catch (error) {
+        res.status(error.status || 503).json({error: error.status ? error.message : 'Maintenance système non configurée sur ce Pi'});
+    }
+};
+
+app.get('/system-update', requireTrustedBrowser, requireLocalOrApiToken, updateEndpoint(async (req, res) => {
+    res.json({systemUpdate: await systemUpdater.status()});
+}));
+app.get('/system-update/challenge', requireTrustedBrowser, requireLocalOrApiToken, updateEndpoint(async (req, res) => {
+    res.json({challenge: await systemUpdater.challenge()});
+}));
+app.post('/system-update/start', requireTrustedBrowser, requireLocalOrApiToken, updateEndpoint(async (req, res) => {
+    const systemUpdate = await systemUpdater.start(req.body);
+    res.status(202).json({message: 'Mise à jour système demandée, sans redémarrage automatique', systemUpdate});
+}));
 
 function isLocalRequest(req) {
     const remote = req.socket.remoteAddress || '';
@@ -47,6 +74,10 @@ const executeFile = (file, args = []) => {
 app.get('/', requireLocalOrApiToken, async (req, res) => {
     let availableCommands = ['shutdown', 'reboot', 'update'];
     let defaultValues = {};
+
+    if (await systemUpdater.available()) {
+        availableCommands.push('prepareSystemUpdate', 'systemUpdate', 'systemUpdateStatus');
+    }
 
     try {
         const detectOutput = await executeFile('ddcutil', ['detect']);

@@ -5,6 +5,11 @@ const socketUtils = require('./socketUtils');
 const {checkUserPermissionsOfThisScreen, isUserSuperAdmin} = require('../../others/checkUserPermissions');
 const {generateDeviceToken, hashDeviceToken} = require('../../others/deviceToken');
 const config = require('../../others/config');
+const {SYSTEM_UPDATE_COMMANDS, signSystemUpdate} = require('../../others/systemUpdateAuthorization');
+const CONTROL_COMMANDS = new Set([
+    'getAvailableCommands', 'refresh', 'identify', 'shutdown', 'reboot', 'update', 'brightness',
+    ...SYSTEM_UPDATE_COMMANDS
+]);
 
 async function assertActiveSession(sessionToken, expectedUserId, expectedTokenVersion) {
     let decoded;
@@ -89,12 +94,35 @@ module.exports = (io, socket) => {
                     return;
                 }
 
+                if (!CONTROL_COMMANDS.has(command)) {
+                    socket.emit('server_forward_client_response_to_admin', {commandId, error: 'Commande inconnue'});
+                    return;
+                }
+                let forwardedValue = value;
+                if (SYSTEM_UPDATE_COMMANDS.has(command)) {
+                    if (!await isUserSuperAdmin(userId)) {
+                        socket.emit('server_forward_client_response_to_admin', {commandId, error: 'Maintenance système réservée aux superadmins'});
+                        return;
+                    }
+                    if (command === 'systemUpdate') {
+                        try {
+                            forwardedValue = signSystemUpdate(value);
+                        } catch (error) {
+                            socket.emit('server_forward_client_response_to_admin', {commandId, error: error.message});
+                            return;
+                        }
+                        console.info('System update authorized', {userId, screenId});
+                    } else {
+                        forwardedValue = null;
+                    }
+                }
+
                 if (screen) {
                     const socketId = socketUtils.getSocketId(screenId);
                     if (socketId) {
                         const screenSocket = io.sockets.sockets.get(socketId);
                         if (screenSocket) {
-                            screenSocket.emit('server_send_control_to_client', {command, commandId, value});
+                            screenSocket.emit('server_send_control_to_client', {command, commandId, value: forwardedValue});
                         } else {
                             socket.emit('server_forward_client_response_to_admin', {
                                 commandId,

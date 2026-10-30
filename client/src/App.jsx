@@ -218,6 +218,24 @@ function App() {
         });
 
         socket.on('server_send_control_to_client', async (data) => {
+            if (['prepareSystemUpdate', 'systemUpdate', 'systemUpdateStatus'].includes(data.command)) {
+                try {
+                    const path = data.command === 'prepareSystemUpdate' ? '/system-update/challenge'
+                        : data.command === 'systemUpdate' ? '/system-update/start' : '/system-update';
+                    const response = await piFetch(path, data.command === 'systemUpdate'
+                        ? {method: 'POST', body: JSON.stringify(data.value)} : {});
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Maintenance indisponible');
+                    socket.emit('client_control_response', {
+                        commandId: data.commandId, command: data.command,
+                        response: result.message || 'État de maintenance reçu',
+                        systemUpdateChallenge: result.challenge, systemUpdate: result.systemUpdate
+                    });
+                } catch (error) {
+                    socket.emit('client_control_response', {commandId: data.commandId, command: data.command, error: error.message});
+                }
+                return;
+            }
             let availableCommands = [];
             let defaultValues = {};
             let appVersion = null;

@@ -164,4 +164,9 @@ sudo systemctl daemon-reload
 sudo systemctl enable pi-server.service
 sudo systemctl start pi-server.service
 
+# Optional, explicit enrollment: the server private key never belongs on the Pi.
+if [ -n "${DISPLAYHUB_SYSTEM_UPDATE_PUBLIC_KEY:-}" ]; then
+  bash "$APP_DIR/install-system-update.sh" "$DISPLAYHUB_SYSTEM_UPDATE_PUBLIC_KEY" "$USERNAME"
+fi
+
 sudo reboot

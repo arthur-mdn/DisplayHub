@@ -146,7 +146,7 @@ module.exports = (io, socket) => {
             for (const adminSocketId of socketUtils.getAdminSocketIdsForUser(userId)) {
                 const adminSocket = io.sockets.sockets.get(adminSocketId);
                 if (adminSocket) {
-                    adminSocket.emit('server_forward_client_response_to_admin', data);
+                    adminSocket.emit('server_forward_client_response_to_admin', {...data, screenId});
                 }
             }
         }
