@@ -17,6 +17,9 @@ app.use(cors({
 
 app.use(express.json());
 
+// Fast installation probe: no DDC commands, credentials or sensitive status.
+app.get('/health', (req, res) => res.json({ok: true, appVersion}));
+
 function requireTrustedBrowser(req, res, next) {
     res.set('Cache-Control', 'no-store');
     if (req.get('Origin') !== config.clientUrl) {
@@ -72,7 +75,8 @@ const executeFile = (file, args = []) => {
 };
 
 app.get('/', requireLocalOrApiToken, async (req, res) => {
-    let availableCommands = ['shutdown', 'reboot', 'update'];
+    let availableCommands = ['shutdown', 'reboot'];
+    if (config.agentUpdatesEnabled) availableCommands.push('update');
     let defaultValues = {};
 
     if (await systemUpdater.available()) {
@@ -115,6 +119,7 @@ app.post('/execute', requireLocalOrApiToken, async (req, res) => {
                 await executeFile('sudo', ['reboot']);
                 break;
             case 'update': {
+                if (!config.agentUpdatesEnabled) return res.status(403).send('Agent géré par l’installateur ; relancer celui-ci pour mettre à jour son code.');
                 const output = await executeFile('git', ['pull']);
                 if (!output.stdout.includes('Already up to date.') && !output.stdout.includes('Déjà à jour.')) {
                     res.json({message: 'Updating and rebooting...'});

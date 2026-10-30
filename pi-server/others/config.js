@@ -3,6 +3,7 @@ if (!process.env.PI_API_TOKEN) {
 }
 
 module.exports = {
+    agentUpdatesEnabled: process.env.AGENT_UPDATES_ENABLED !== 'false',
     port: process.env.PORT || process.env.PI_SERVER_PORT || 3002,
     clientUrl: process.env.CLIENT_URL || process.env.VITE_SCHEME + '://' + process.env.VITE_CLIENT_URL,
     apiToken: process.env.PI_API_TOKEN
