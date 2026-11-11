@@ -63,7 +63,9 @@ function DisplayIcons({icons, isDarkModeActive}) {
 
         return () => {
             cancelled = true;
-            objectUrls.forEach((url) => URL.revokeObjectURL(url));
+            for (const url of objectUrls) {
+                URL.revokeObjectURL(url);
+            }
         };
     }, [icons, isDarkModeActive]);
 
